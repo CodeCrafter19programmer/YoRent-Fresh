@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { Layout } from "@/components/Layout";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import RoleBasedRedirect from "@/components/RoleBasedRedirect";
 import NotificationService from "@/services/notificationService";
 import Dashboard from "./pages/Dashboard";
 import Properties from "./pages/Properties";
@@ -40,8 +41,11 @@ const App = () => (
             <Route path="/signup" element={<Signup />} />
             <Route path="/unauthorized" element={<Unauthorized />} />
             
+            {/* Role-based redirect for root path */}
+            <Route path="/" element={<RoleBasedRedirect />} />
+            
             {/* Protected admin routes */}
-            <Route path="/" element={
+            <Route path="/admin/dashboard" element={
               <ProtectedRoute requiredRole="admin">
                 <Layout><Dashboard /></Layout>
               </ProtectedRoute>
