@@ -3,7 +3,7 @@
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FCodeCrafter19programmer%2FYoRent-TenantManagement&env=VITE_SUPABASE_PROJECT_ID,VITE_SUPABASE_PUBLISHABLE_KEY,VITE_SUPABASE_URL&envDescription=Supabase%20credentials%20required%20for%20backend%20integration&envLink=https%3A%2F%2Fsupabase.com%2Fdashboard%2Fproject%2Fjdowddqkygnttbsxghvc%2Fsettings%2Fapi)
 
-A comprehensive tenant management system with authentication, payment tracking, notifications, and tax accountability features.
+A comprehensive tenant management system with authentication, payment tracking, notifications, and tax accountability features. 🏠
 
 ## 🚀 Quick Deploy
 
