@@ -1,0 +1,197 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    /* Professional Blue-White Theme */
+    --background: 210 20% 98%;
+    --foreground: 215 25% 27%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 215 25% 27%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 25% 27%;
+
+    /* Primary: Professional Blue */
+    --primary: 210 100% 50%;
+    --primary-foreground: 0 0% 100%;
+    --primary-light: 210 100% 60%;
+    --primary-dark: 210 100% 40%;
+
+    /* Secondary: Light Blue */
+    --secondary: 210 100% 95%;
+    --secondary-foreground: 210 100% 30%;
+
+    /* Success: Green for paid status */
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 100%;
+    --success-light: 142 76% 90%;
+
+    /* Warning: Orange for pending */
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --warning-light: 38 92% 95%;
+
+    /* Danger: Red for unpaid/overdue */
+    --danger: 0 84% 60%;
+    --danger-foreground: 0 0% 100%;
+    --danger-light: 0 84% 95%;
+
+    --muted: 210 20% 96%;
+    --muted-foreground: 215 16% 47%;
+
+    --accent: 210 100% 92%;
+    --accent-foreground: 210 100% 30%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 210 100% 50%;
+
+    --radius: 0.75rem;
+
+    /* Sidebar: Blue theme */
+    --sidebar-background: 210 100% 50%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 210 100% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 210 100% 45%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 210 100% 45%;
+    --sidebar-ring: 210 100% 60%;
+
+    /* Custom tokens for rental system */
+    --stat-card-bg: 0 0% 100%;
+    --stat-card-border: 214 32% 91%;
+    
+    /* Shadows */
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+
+    /* Transitions */
+    --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-base: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .dark {
+    --background: 215 28% 17%;
+    --foreground: 210 20% 98%;
+
+    --card: 215 28% 20%;
+    --card-foreground: 210 20% 98%;
+
+    --popover: 215 28% 20%;
+    --popover-foreground: 210 20% 98%;
+
+    --primary: 210 100% 50%;
+    --primary-foreground: 0 0% 100%;
+    --primary-light: 210 100% 60%;
+    --primary-dark: 210 100% 40%;
+
+    --secondary: 215 28% 25%;
+    --secondary-foreground: 210 20% 98%;
+
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 100%;
+    --success-light: 142 76% 20%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --warning-light: 38 92% 20%;
+
+    --danger: 0 84% 60%;
+    --danger-foreground: 0 0% 100%;
+    --danger-light: 0 84% 20%;
+
+    --muted: 215 28% 25%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 215 28% 25%;
+    --accent-foreground: 210 20% 98%;
+
+    --destructive: 0 62% 30%;
+    --destructive-foreground: 210 20% 98%;
+
+    --border: 215 28% 25%;
+    --input: 215 28% 25%;
+    --ring: 210 100% 50%;
+
+    --sidebar-background: 215 28% 15%;
+    --sidebar-foreground: 210 20% 98%;
+    --sidebar-primary: 210 100% 50%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 215 28% 20%;
+    --sidebar-accent-foreground: 210 20% 98%;
+    --sidebar-border: 215 28% 20%;
+    --sidebar-ring: 210 100% 50%;
+
+    --stat-card-bg: 215 28% 20%;
+    --stat-card-border: 215 28% 25%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Smooth scrolling */
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+@layer components {
+  /* Stat Card Component */
+  .stat-card {
+    @apply bg-card rounded-xl border border-border p-6 shadow-sm transition-all duration-200 hover:shadow-md;
+  }
+
+  /* Status Badges */
+  .status-badge-success {
+    @apply inline-flex items-center rounded-full bg-[hsl(var(--success-light))] px-2.5 py-0.5 text-xs font-medium text-[hsl(var(--success))];
+  }
+
+  .status-badge-warning {
+    @apply inline-flex items-center rounded-full bg-[hsl(var(--warning-light))] px-2.5 py-0.5 text-xs font-medium text-[hsl(var(--warning))];
+  }
+
+  .status-badge-danger {
+    @apply inline-flex items-center rounded-full bg-[hsl(var(--danger-light))] px-2.5 py-0.5 text-xs font-medium text-[hsl(var(--danger))];
+  }
+
+  /* Data Table Styles */
+  .data-table {
+    @apply w-full border-collapse;
+  }
+
+  .data-table thead {
+    @apply border-b border-border bg-muted/50;
+  }
+
+  .data-table th {
+    @apply px-4 py-3 text-left text-sm font-semibold text-muted-foreground;
+  }
+
+  .data-table td {
+    @apply px-4 py-3 text-sm;
+  }
+
+  .data-table tbody tr {
+    @apply border-b border-border transition-colors hover:bg-muted/50;
+  }
+}
