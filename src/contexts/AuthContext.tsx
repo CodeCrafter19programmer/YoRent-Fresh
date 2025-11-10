@@ -64,8 +64,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       const { data, error } = await supabase
         .from('user_roles')
-        .select('role')
+        .select('role, created_at')
         .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(1)
         .maybeSingle(); // Use maybeSingle instead of single to handle no results
 
       console.log('Role query result:', { data, error });
@@ -74,7 +76,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.error('Error fetching user role:', error);
         setUserRole(null);
       } else {
-        setUserRole(data?.role || null);
+        const normalizedRole =
+          data && typeof (data as any).role === 'string'
+            ? ((data as any).role as string).toLowerCase()
+            : null;
+        setUserRole((normalizedRole as 'admin' | 'tenant' | null) || null);
       }
     } catch (error) {
       console.error('Error fetching user role:', error);
@@ -85,11 +91,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    return { error };
+    try {
+      const result = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      console.log('Sign-in result:', { error: result.error, user: result.data?.user?.id });
+      return { error: result.error };
+    } catch (err: any) {
+      console.error('Sign-in exception:', err);
+      return { error: err };
+    }
   };
 
   const signUp = async (email: string, password: string, fullName: string) => {

@@ -18,18 +18,21 @@ const Login = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError('');
-
-    const { error } = await signIn(email, password);
-
-    if (error) {
-      setError(error.message);
-    } else {
+    setLoading(true);
+    try {
+      const { error } = await signIn(email, password);
+      if (error) {
+        setError(error.message || 'Sign in failed');
+        return;
+      }
       navigate('/');
+    } catch (err: any) {
+      setError(err?.message || 'Unexpected error during sign in');
+      console.error('Login submit exception:', err);
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   return (
