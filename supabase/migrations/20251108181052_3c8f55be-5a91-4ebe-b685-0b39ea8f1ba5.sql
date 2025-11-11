@@ -21,7 +21,7 @@ CREATE TABLE public.user_roles (
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
   role app_role NOT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(user_id, role)
+  UNIQUE(user_id)
 );
 
 -- Create function to check user role
