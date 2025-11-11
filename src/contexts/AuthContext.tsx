@@ -25,16 +25,28 @@ export const useAuth = () => {
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
-  const [userRole, setUserRole] = useState<'admin' | 'tenant' | null>(null);
+  const [userRole, setUserRole] = useState<'admin' | 'tenant' | null>((localStorage.getItem('yorent_role') as 'admin' | 'tenant' | null) ?? null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const adminEmail = (import.meta.env.VITE_ADMIN_EMAIL || 'admin@yorent.com').toLowerCase();
+    const computeRoleFromEmail = (email: string) => (email?.toLowerCase() === adminEmail ? 'admin' : 'tenant');
+    const upsertUserRole = async (userId: string, role: 'admin' | 'tenant') => {
+      try {
+        await supabase.from('user_roles').upsert({ user_id: userId, role }, { onConflict: 'user_id' });
+        localStorage.setItem('yorent_role', role);
+      } catch {}
+    };
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        fetchUserRole(session.user.id);
+        const role = computeRoleFromEmail(session.user.email || '');
+        setUserRole(role as 'admin' | 'tenant');
+        localStorage.setItem('yorent_role', role);
+        setLoading(false);
+        upsertUserRole(session.user.id, role as 'admin' | 'tenant');
       } else {
         setLoading(false);
       }
@@ -46,9 +58,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
-      
       if (session?.user) {
-        await fetchUserRole(session.user.id);
+        const role = (session.user.email || '').toLowerCase() === (import.meta.env.VITE_ADMIN_EMAIL || 'admin@yorent.com').toLowerCase() ? 'admin' : 'tenant';
+        setUserRole(role as 'admin' | 'tenant');
+        localStorage.setItem('yorent_role', role);
+        setLoading(false);
+        try { await supabase.from('user_roles').upsert({ user_id: session.user.id, role }, { onConflict: 'user_id' }); } catch {}
       } else {
         setUserRole(null);
         setLoading(false);
