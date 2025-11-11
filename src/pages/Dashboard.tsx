@@ -1,7 +1,10 @@
-import { Building2, Users, DollarSign, TrendingUp, Home, AlertCircle } from "lucide-react";
-import { StatCard } from "@/components/StatCard";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { useEffect, useState } from 'react';
+import { Building2, Users, DollarSign, TrendingUp, Home, AlertCircle } from 'lucide-react';
+import { StatCard } from '@/components/StatCard';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { supabase } from '@/integrations/supabase/client';
+import { useNavigate } from 'react-router-dom';
 import {
   BarChart,
   Bar,
@@ -13,29 +16,139 @@ import {
   PieChart,
   Pie,
   Cell,
-} from "recharts";
+} from 'recharts';
 
-const rentData = [
-  { month: "Jan", collected: 45000, expected: 50000 },
-  { month: "Feb", collected: 48000, expected: 50000 },
-  { month: "Mar", collected: 50000, expected: 50000 },
-  { month: "Apr", collected: 47000, expected: 52000 },
-  { month: "May", collected: 52000, expected: 52000 },
-  { month: "Jun", collected: 49000, expected: 54000 },
-];
+interface DashboardStats {
+  totalProperties: number;
+  occupiedProperties: number;
+  vacantProperties: number;
+  totalTenants: number;
+  totalRentExpected: number;
+  totalRentCollected: number;
+  outstandingRent: number;
+  overduePayments: number;
+}
 
-const occupancyData = [
-  { name: "Occupied", value: 18, color: "hsl(var(--success))" },
-  { name: "Available", value: 7, color: "hsl(var(--primary))" },
-];
-
-const unpaidRentList = [
-  { tenant: "John Doe", property: "Apt 101, Building A", amount: 1200, daysOverdue: 5 },
-  { tenant: "Jane Smith", property: "House 23, Greenview", amount: 1500, daysOverdue: 12 },
-  { tenant: "Mike Johnson", property: "Shop 5, Plaza Center", amount: 2500, daysOverdue: 3 },
-];
+interface UnpaidRent {
+  tenant_name: string;
+  property_name: string;
+  amount: number;
+  days_overdue: number;
+}
 
 const Dashboard = () => {
+  const navigate = useNavigate();
+  const [stats, setStats] = useState<DashboardStats>({
+    totalProperties: 0,
+    occupiedProperties: 0,
+    vacantProperties: 0,
+    totalTenants: 0,
+    totalRentExpected: 0,
+    totalRentCollected: 0,
+    outstandingRent: 0,
+    overduePayments: 0,
+  });
+  const [unpaidRentList, setUnpaidRentList] = useState<UnpaidRent[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchDashboardData();
+    
+    // Subscribe to real-time updates
+    const subscription = supabase
+      .channel('dashboard-updates')
+      .on('postgres_changes', { event: '*', schema: 'public' }, () => {
+        fetchDashboardData();
+      })
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  const fetchDashboardData = async () => {
+    try {
+      // Fetch properties
+      const { data: properties } = await supabase
+        .from('properties')
+        .select('*');
+
+      // Fetch tenants
+      const { data: tenants } = await supabase
+        .from('tenants')
+        .select('*');
+
+      // Fetch payments
+      const { data: payments } = await supabase
+        .from('payments')
+        .select('*, tenants(full_name), properties(name)');
+
+      const totalProperties = properties?.length || 0;
+      const occupiedProperties = properties?.filter(p => p.status === 'occupied').length || 0;
+      const vacantProperties = properties?.filter(p => p.status === 'vacant').length || 0;
+      const totalTenants = tenants?.filter(t => t.status === 'active').length || 0;
+
+      // Calculate rent statistics
+      const totalRentExpected = properties?.filter(p => p.status === 'occupied')
+        .reduce((sum, p) => sum + p.monthly_rent, 0) || 0;
+      
+      const totalRentCollected = payments?.filter(p => p.status === 'paid')
+        .reduce((sum, p) => sum + p.amount, 0) || 0;
+      
+      const outstandingRent = payments?.filter(p => p.status === 'unpaid')
+        .reduce((sum, p) => sum + p.amount, 0) || 0;
+
+      const overduePayments = payments?.filter(p => 
+        p.status === 'unpaid' && new Date(p.due_date) < new Date()
+      ).length || 0;
+
+      // Get unpaid rent details
+      const unpaid = payments?.filter(p => 
+        p.status === 'unpaid' && new Date(p.due_date) < new Date()
+      ).map(p => ({
+        tenant_name: p.tenants?.full_name || 'Unknown',
+        property_name: p.properties?.name || 'Unknown',
+        amount: p.amount,
+        days_overdue: Math.floor((new Date().getTime() - new Date(p.due_date).getTime()) / (1000 * 60 * 60 * 24))
+      })) || [];
+
+      setStats({
+        totalProperties,
+        occupiedProperties,
+        vacantProperties,
+        totalTenants,
+        totalRentExpected,
+        totalRentCollected,
+        outstandingRent,
+        overduePayments,
+      });
+
+      setUnpaidRentList(unpaid.slice(0, 5));
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const occupancyData = [
+    { name: 'Occupied', value: stats.occupiedProperties, color: 'hsl(var(--success))' },
+    { name: 'Vacant', value: stats.vacantProperties, color: 'hsl(var(--primary))' },
+  ];
+
+  const occupancyRate = stats.totalProperties > 0 
+    ? ((stats.occupiedProperties / stats.totalProperties) * 100).toFixed(0)
+    : '0';
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -45,7 +158,10 @@ const Dashboard = () => {
             Welcome back! Here's an overview of your rental properties.
           </p>
         </div>
-        <Button className="bg-primary hover:bg-primary-dark">
+        <Button 
+          className="bg-primary hover:bg-primary-dark"
+          onClick={() => navigate('/properties')}
+        >
           <Home className="mr-2 h-4 w-4" />
           Add Property
         </Button>
@@ -55,30 +171,30 @@ const Dashboard = () => {
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Total Properties"
-          value="25"
+          value={stats.totalProperties.toString()}
           icon={Building2}
-          trend={{ value: "2", isPositive: true }}
+          trend={{ value: `${stats.occupiedProperties} occupied`, isPositive: true }}
           variant="default"
         />
         <StatCard
-          title="Occupied Properties"
-          value="18"
+          title="Occupancy Rate"
+          value={`${occupancyRate}%`}
           icon={Home}
-          trend={{ value: "72%", isPositive: true }}
+          trend={{ value: `${stats.occupiedProperties}/${stats.totalProperties}`, isPositive: stats.occupiedProperties > 0 }}
           variant="success"
         />
         <StatCard
           title="Rent Collected"
-          value="$49,000"
+          value={`$${stats.totalRentCollected.toLocaleString()}`}
           icon={DollarSign}
-          trend={{ value: "$4,500", isPositive: true }}
+          trend={{ value: `Expected: $${stats.totalRentExpected.toLocaleString()}`, isPositive: stats.totalRentCollected > 0 }}
           variant="success"
         />
         <StatCard
           title="Outstanding Rent"
-          value="$5,200"
+          value={`$${stats.outstandingRent.toLocaleString()}`}
           icon={AlertCircle}
-          trend={{ value: "$800", isPositive: false }}
+          trend={{ value: `${stats.overduePayments} overdue`, isPositive: false }}
           variant="danger"
         />
       </div>
@@ -87,33 +203,9 @@ const Dashboard = () => {
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Rent Collection (Last 6 Months)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={rentData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="month" stroke="hsl(var(--muted-foreground))" />
-                <YAxis stroke="hsl(var(--muted-foreground))" />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "hsl(var(--card))",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: "var(--radius)",
-                  }}
-                />
-                <Bar dataKey="collected" fill="hsl(var(--success))" radius={[8, 8, 0, 0]} />
-                <Bar dataKey="expected" fill="hsl(var(--primary))" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
             <CardTitle>Property Occupancy</CardTitle>
           </CardHeader>
-          <CardContent className="flex items-center justify-center">
+          <CardContent>
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
@@ -122,7 +214,7 @@ const Dashboard = () => {
                   cy="50%"
                   labelLine={false}
                   label={({ name, value }) => `${name}: ${value}`}
-                  outerRadius={100}
+                  outerRadius={80}
                   fill="#8884d8"
                   dataKey="value"
                 >
@@ -130,60 +222,161 @@ const Dashboard = () => {
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "hsl(var(--card))",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: "var(--radius)",
-                  }}
-                />
+                <Tooltip />
               </PieChart>
             </ResponsiveContainer>
+            <div className="mt-4 space-y-2">
+              {occupancyData.map((item, index) => (
+                <div key={index} className="flex items-center justify-between text-sm">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
+                    <span>{item.name}</span>
+                  </div>
+                  <span className="font-medium">{item.value} properties</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Revenue Summary */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Revenue Summary</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-6">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-muted-foreground">Expected Monthly Rent</span>
+                  <span className="text-lg font-bold">${stats.totalRentExpected.toLocaleString()}</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div 
+                    className="bg-blue-600 h-2 rounded-full" 
+                    style={{ width: '100%' }}
+                  />
+                </div>
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-muted-foreground">Rent Collected</span>
+                  <span className="text-lg font-bold text-green-600">${stats.totalRentCollected.toLocaleString()}</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div 
+                    className="bg-green-600 h-2 rounded-full" 
+                    style={{ 
+                      width: stats.totalRentExpected > 0 
+                        ? `${(stats.totalRentCollected / stats.totalRentExpected) * 100}%` 
+                        : '0%' 
+                    }}
+                  />
+                </div>
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-muted-foreground">Outstanding</span>
+                  <span className="text-lg font-bold text-red-600">${stats.outstandingRent.toLocaleString()}</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div 
+                    className="bg-red-600 h-2 rounded-full" 
+                    style={{ 
+                      width: stats.totalRentExpected > 0 
+                        ? `${(stats.outstandingRent / stats.totalRentExpected) * 100}%` 
+                        : '0%' 
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Unpaid Rent Section */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <AlertCircle className="h-5 w-5 text-danger" />
-            Unpaid Rent
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Tenant</th>
-                  <th>Property</th>
-                  <th>Amount</th>
-                  <th>Days Overdue</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {unpaidRentList.map((item, index) => (
-                  <tr key={index}>
-                    <td className="font-medium">{item.tenant}</td>
-                    <td>{item.property}</td>
-                    <td className="font-semibold text-danger">${item.amount.toLocaleString()}</td>
-                    <td>
-                      <span className="status-badge-danger">{item.daysOverdue} days</span>
-                    </td>
-                    <td>
-                      <Button variant="outline" size="sm">
-                        Send Reminder
-                      </Button>
-                    </td>
+      {/* Unpaid Rent Table */}
+      {unpaidRentList.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <AlertCircle className="h-5 w-5 mr-2 text-red-600" />
+              Overdue Payments
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left p-3 text-sm font-semibold">Tenant</th>
+                    <th className="text-left p-3 text-sm font-semibold">Property</th>
+                    <th className="text-right p-3 text-sm font-semibold">Amount</th>
+                    <th className="text-right p-3 text-sm font-semibold">Days Overdue</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+                </thead>
+                <tbody>
+                  {unpaidRentList.map((item, index) => (
+                    <tr key={index} className="border-b hover:bg-gray-50">
+                      <td className="p-3 font-medium">{item.tenant_name}</td>
+                      <td className="p-3 text-sm text-gray-600">{item.property_name}</td>
+                      <td className="p-3 text-right font-semibold text-red-600">
+                        ${item.amount.toLocaleString()}
+                      </td>
+                      <td className="p-3 text-right">
+                        <span className="px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs font-medium">
+                          {item.days_overdue} days
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Quick Stats Summary */}
+      <div className="grid gap-6 md:grid-cols-3">
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Total Tenants</p>
+                <p className="text-2xl font-bold">{stats.totalTenants}</p>
+              </div>
+              <Users className="h-8 w-8 text-blue-600" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Vacant Properties</p>
+                <p className="text-2xl font-bold">{stats.vacantProperties}</p>
+              </div>
+              <Home className="h-8 w-8 text-yellow-600" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Collection Rate</p>
+                <p className="text-2xl font-bold">
+                  {stats.totalRentExpected > 0 
+                    ? ((stats.totalRentCollected / stats.totalRentExpected) * 100).toFixed(1) 
+                    : '0'}%
+                </p>
+              </div>
+              <TrendingUp className="h-8 w-8 text-green-600" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 };
