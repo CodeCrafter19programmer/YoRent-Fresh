@@ -15,16 +15,19 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [role, setRole] = useState<'admin' | 'tenant'>('tenant');
-  const { signIn, user } = useAuth();
+  const { signIn, user, userRole } = useAuth();
   const navigate = useNavigate();
 
-  // If a user session already exists, redirect out of /login
+  // If a user session already exists and role is known, redirect out of /login
   useEffect(() => {
-    if (user) {
-      // Force a full page redirect to avoid any SPA routing edge cases
-      window.location.assign('/admin/dashboard');
+    if (!user) return;
+    if (!userRole) return; // wait for role to resolve
+    if (userRole === 'admin') {
+      navigate('/admin/payments', { replace: true });
+    } else {
+      navigate('/tenant/dashboard', { replace: true });
     }
-  }, [user, navigate]);
+  }, [user, userRole, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
