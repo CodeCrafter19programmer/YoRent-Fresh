@@ -1,52 +1,32 @@
 import { useEffect, useState } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
-import { mockApi } from '@/lib/mockApi';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Bell, CreditCard, Home, Calendar, DollarSign, AlertTriangle, Shield } from 'lucide-react';
 import { format } from 'date-fns';
+import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
+import {
+  tenantService,
+  notificationService,
+  policyService,
+  type DbTenant,
+  type DbPayment,
+  type DbNotification,
+  type DbPolicy,
+} from '@/lib/supabaseApi';
 
-interface TenantData {
-  id: string;
-  full_name: string;
-  email: string;
-  monthly_rent: number;
-  property: {
-    name: string;
-    address: string;
-  };
-}
-
-interface Payment {
-  id: string;
-  amount: number;
-  month: string;
-  due_date: string;
-  paid_date: string | null;
-  status: string;
-  payment_method: string | null;
-}
-
-interface Notification {
-  id: string;
-  title: string;
-  message: string;
-  type: string;
-  read: boolean;
-  created_at: string;
-}
-
-interface Policy {
-  id: string;
-  title: string;
-  content: string;
-  category: string;
-}
+type TenantData = DbTenant;
+type Payment = DbPayment;
+type Notification = DbNotification;
+type Policy = DbPolicy;
 
 const TenantDashboard = () => {
-  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+  const { user, signOut: signOutAuth, loading: authLoading } = useAuth();
+  const { toast } = useToast();
   const [tenantData, setTenantData] = useState<TenantData | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -54,69 +34,79 @@ const TenantDashboard = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (user) {
-      fetchTenantData();
-      fetchPolicies();
-      fetchNotifications();
-    }
-  }, [user]);
-
-  useEffect(() => {
-    if (tenantData) {
-      fetchPayments();
-    }
-  }, [tenantData]);
-
-  const fetchTenantData = async () => {
-    try {
-      const tenant = await mockApi.getTenantByUserId(user?.id as string);
-      if (tenant) {
-        setTenantData({
-          id: tenant.id,
-          full_name: tenant.full_name,
-          email: tenant.email,
-          monthly_rent: tenant.monthly_rent,
-          property: tenant.property || { name: 'N/A', address: '' },
-        } as any);
-      }
-    } catch (error) {
-      console.error('Error fetching tenant data:', error);
-    }
-  };
-
-  const fetchPayments = async () => {
-    try {
-      if (!tenantData) return;
-      const data = await mockApi.getPaymentsByTenantId(tenantData.id);
-      setPayments(data || []);
-    } catch (error) {
-      console.error('Error fetching payments:', error);
-    }
-  };
-
-  const fetchNotifications = async () => {
-    try {
-      const data = await mockApi.getNotifications(user?.id || '');
-      setNotifications(data || []);
-    } catch (error) {
-      console.error('Error fetching notifications:', error);
-    } finally {
+    if (authLoading) return;
+    if (!user) {
       setLoading(false);
+      return;
     }
-  };
 
-  const fetchPolicies = async () => {
+    const loadDashboard = async () => {
+      setLoading(true);
+      try {
+        const tenant = await tenantService.getByUserId(user.id);
+        if (!tenant) {
+          toast({
+            title: 'Tenant not found',
+            description: 'We could not locate tenant data for your account.',
+            variant: 'destructive',
+          });
+          setLoading(false);
+          return;
+        }
+
+        setTenantData(tenant);
+
+        const [tenantPayments, tenantNotifications, activePolicies] = await Promise.all([
+          tenantService.getPayments(tenant.id),
+          notificationService.listForUser(user.id),
+          policyService.listActive(),
+        ]);
+
+        setPayments(tenantPayments);
+        setNotifications(tenantNotifications);
+        setPolicies(activePolicies);
+      } catch (error) {
+        toast({
+          title: 'Error',
+          description: error instanceof Error ? error.message : 'Failed to load tenant dashboard',
+          variant: 'destructive',
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadDashboard();
+  }, [authLoading, toast, user]);
+
+  const markNotificationAsRead = async (notificationId: string) => {
     try {
-      const data = await mockApi.getActivePolicies();
-      setPolicies((data || []).map(p => ({ id: p.id, title: p.title, content: p.content, category: p.category })));
+      await notificationService.markRead(notificationId);
+      setNotifications((prev) =>
+        prev.map((notification) =>
+          notification.id === notificationId ? { ...notification, read: true } : notification
+        )
+      );
     } catch (error) {
-      console.error('Error fetching policies:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to mark notification as read',
+        variant: 'destructive',
+      });
     }
   };
 
-  const markNotificationAsRead = async (_notificationId: string) => {
-    // No-op in mock mode
-    fetchNotifications();
+  const handleSignOut = async () => {
+    const { error } = await signOutAuth();
+    if (error) {
+      toast({
+        title: 'Error signing out',
+        description: error.message,
+        variant: 'destructive',
+      });
+      return;
+    }
+    navigate('/login');
   };
 
   const getPaymentStatusColor = (status: string) => {
@@ -129,29 +119,43 @@ const TenantDashboard = () => {
   };
 
   const getUpcomingPayments = () => {
-    return payments.filter(payment => 
-      payment.status === 'unpaid' && 
-      new Date(payment.due_date) >= new Date()
-    ).slice(0, 3);
+    return payments
+      .filter(
+        (payment) =>
+          payment.status === 'unpaid' &&
+          payment.due_date && new Date(payment.due_date) >= new Date()
+      )
+      .slice(0, 3);
   };
 
   const getOverduePayments = () => {
-    return payments.filter(payment => 
-      payment.status === 'unpaid' && 
-      new Date(payment.due_date) < new Date()
+    return payments.filter(
+      (payment) => payment.status === 'unpaid' && payment.due_date && new Date(payment.due_date) < new Date()
     );
   };
 
   const getTotalBalance = () => {
     return payments
-      .filter(payment => payment.status === 'unpaid')
-      .reduce((total, payment) => total + payment.amount, 0);
+      .filter((payment) => payment.status === 'unpaid')
+      .reduce((total, payment) => total + (payment.amount ?? 0), 0);
   };
 
-  if (loading) {
+  if (loading || authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  if (!user || !tenantData) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <h2 className="text-2xl font-semibold">No tenant data</h2>
+          <p className="text-muted-foreground">We couldn't find tenant information for this account.</p>
+          <Button onClick={handleSignOut}>Return to login</Button>
+        </div>
       </div>
     );
   }
@@ -168,7 +172,7 @@ const TenantDashboard = () => {
             </div>
             <div className="flex items-center space-x-4">
               <span className="text-sm text-gray-600">Welcome, {tenantData?.full_name}</span>
-              <Button variant="outline" onClick={signOut}>
+              <Button variant="outline" onClick={handleSignOut}>
                 Sign Out
               </Button>
             </div>
@@ -278,9 +282,11 @@ const TenantDashboard = () => {
                   <div key={payment.id} className="flex items-center justify-between p-4 border rounded-lg">
                     <div>
                       <p className="font-medium">{payment.month}</p>
-                      <p className="text-sm text-gray-600">
-                        Due: {format(new Date(payment.due_date), 'MMM dd, yyyy')}
-                      </p>
+                      {payment.due_date && (
+                        <p className="text-sm text-gray-600">
+                          Due: {format(new Date(payment.due_date), 'MMM dd, yyyy')}
+                        </p>
+                      )}
                       {payment.paid_date && (
                         <p className="text-sm text-gray-600">
                           Paid: {format(new Date(payment.paid_date), 'MMM dd, yyyy')}
@@ -288,7 +294,7 @@ const TenantDashboard = () => {
                       )}
                     </div>
                     <div className="text-right">
-                      <p className="font-semibold">${payment.amount.toFixed(2)}</p>
+                      <p className="font-semibold">${(payment.amount ?? 0).toFixed(2)}</p>
                       <Badge className={getPaymentStatusColor(payment.status)}>
                         {payment.status}
                       </Badge>
@@ -347,34 +353,6 @@ const TenantDashboard = () => {
             </CardContent>
           </Card>
         </div>
-
-        {/* Policies Section */}
-        {policies.length > 0 && (
-          <Card className="mt-8">
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <Shield className="h-5 w-5 mr-2" />
-                Property Rules & Policies
-              </CardTitle>
-              <CardDescription>
-                Important rules and guidelines from your landlord
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {policies.map((policy) => (
-                  <div key={policy.id} className="border rounded-lg p-4">
-                    <div className="flex items-start justify-between mb-2">
-                      <h3 className="font-semibold text-lg">{policy.title}</h3>
-                      <Badge variant="outline">{policy.category}</Badge>
-                    </div>
-                    <p className="text-sm text-gray-700 whitespace-pre-wrap">{policy.content}</p>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
 
         {/* Upcoming Payments Alert */}
         {getUpcomingPayments().length > 0 && (

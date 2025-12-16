@@ -7,33 +7,19 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { StatCard } from '@/components/StatCard';
-import { mockApi } from '@/lib/mockApi';
+import {
+  paymentService,
+  tenantService,
+  type DbPayment,
+  type DbTenant,
+  type PaymentStatus,
+} from '@/lib/supabaseApi';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 
-interface Payment {
-  id: string;
-  tenant_id: string;
-  property_id: string;
-  amount: number;
-  month: string;
-  due_date: string;
-  paid_date: string | null;
-  status: string;
-  payment_method: string | null;
-  tenants?: {
-    full_name: string;
-  };
-  properties?: {
-    name: string;
-  };
-}
+type Payment = DbPayment;
 
-interface Tenant {
-  id: string;
-  full_name: string;
-  monthly_rent: number;
-}
+type Tenant = DbTenant;
 
 const RentManagementNew = () => {
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -48,11 +34,12 @@ const RentManagementNew = () => {
 
   const [paymentForm, setPaymentForm] = useState({
     tenant_id: '',
-    amount: 0,
+    property_id: '',
+    amount: '',
     month: '',
     due_date: '',
     paid_date: '',
-    status: 'unpaid',
+    status: 'unpaid' as PaymentStatus,
     payment_method: '',
   });
 
@@ -62,15 +49,14 @@ const RentManagementNew = () => {
   }, []);
 
   const fetchPayments = async () => {
+    setLoading(true);
     try {
-      const data = await mockApi.getPayments();
-      // Shape to expected structure for this page
-      const shaped = (data as any[]).map(p => ({ ...p, tenants: p.tenant, properties: p.property }));
-      setPayments(shaped as any);
-    } catch (error: any) {
+      const data = await paymentService.list();
+      setPayments(data);
+    } catch (error) {
       toast({
         title: 'Error',
-        description: error.message,
+        description: error instanceof Error ? error.message : 'Failed to load payments',
         variant: 'destructive',
       });
     } finally {
@@ -80,33 +66,47 @@ const RentManagementNew = () => {
 
   const fetchTenants = async () => {
     try {
-      const data = await mockApi.getActiveTenants();
-      setTenants((data as any[]).map(t => ({ id: t.id, full_name: t.full_name, monthly_rent: t.monthly_rent })));
-    } catch (error: any) {
+      const data = await tenantService.listActive();
+      setTenants(data);
+    } catch (error) {
       console.error('Error fetching tenants:', error);
     }
   };
 
   const handleAddPayment = async () => {
     try {
-      // Get tenant's property_id
-      const tenant = tenants.find(t => t.id === paymentForm.tenant_id);
+      const tenant = tenants.find((t) => t.id === paymentForm.tenant_id);
       if (!tenant) {
         toast({ title: 'Error', description: 'Tenant not found', variant: 'destructive' });
         return;
       }
 
-      const { error } = await mockApi.createPayment({ ...paymentForm, property_id: (tenant as any).property_id } as any);
-      if (error) throw error;
+      const parsedAmount = Number.parseFloat(paymentForm.amount);
+      if (Number.isNaN(parsedAmount)) {
+        toast({ title: 'Error', description: 'Amount must be a valid number', variant: 'destructive' });
+        return;
+      }
+
+      await paymentService.create({
+        tenant_id: paymentForm.tenant_id,
+        property_id: tenant.property?.id ?? null,
+        amount: parsedAmount,
+        month: paymentForm.month,
+        due_date: paymentForm.due_date,
+        paid_date: paymentForm.paid_date || null,
+        status: paymentForm.status,
+        payment_method: paymentForm.payment_method || null,
+        notes: null,
+      });
 
       toast({ title: 'Success', description: 'Payment record created successfully' });
       setAddDialogOpen(false);
       resetForm();
       fetchPayments();
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'Error',
-        description: error.message,
+        description: error instanceof Error ? error.message : 'Failed to create payment',
         variant: 'destructive',
       });
     }
@@ -116,17 +116,29 @@ const RentManagementNew = () => {
     if (!selectedPayment) return;
 
     try {
-      const { error } = await mockApi.updatePayment(selectedPayment.id, paymentForm as any);
-      if (error) throw error;
+      const parsedAmount = Number.parseFloat(paymentForm.amount);
+      if (Number.isNaN(parsedAmount)) {
+        toast({ title: 'Error', description: 'Amount must be a valid number', variant: 'destructive' });
+        return;
+      }
+
+      await paymentService.update(selectedPayment.id, {
+        amount: parsedAmount,
+        month: paymentForm.month,
+        due_date: paymentForm.due_date,
+        paid_date: paymentForm.paid_date || null,
+        status: paymentForm.status,
+        payment_method: paymentForm.payment_method || null,
+      });
 
       toast({ title: 'Success', description: 'Payment updated successfully' });
       setEditDialogOpen(false);
       setSelectedPayment(null);
       fetchPayments();
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'Error',
-        description: error.message,
+        description: error instanceof Error ? error.message : 'Failed to update payment',
         variant: 'destructive',
       });
     }
@@ -134,15 +146,17 @@ const RentManagementNew = () => {
 
   const handleMarkAsPaid = async (paymentId: string) => {
     try {
-      const { error } = await mockApi.updatePayment(paymentId, { status: 'paid', paid_date: new Date().toISOString().split('T')[0] } as any);
-      if (error) throw error;
+      await paymentService.update(paymentId, {
+        status: 'paid',
+        paid_date: new Date().toISOString().split('T')[0],
+      });
 
       toast({ title: 'Success', description: 'Payment marked as paid' });
       fetchPayments();
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'Error',
-        description: error.message,
+        description: error instanceof Error ? error.message : 'Failed to mark payment as paid',
         variant: 'destructive',
       });
     }
@@ -152,11 +166,12 @@ const RentManagementNew = () => {
     setSelectedPayment(payment);
     setPaymentForm({
       tenant_id: payment.tenant_id,
-      amount: payment.amount,
+      property_id: payment.property_id ?? '',
+      amount: payment.amount.toString(),
       month: payment.month,
       due_date: payment.due_date,
       paid_date: payment.paid_date || '',
-      status: payment.status,
+      status: payment.status as PaymentStatus,
       payment_method: payment.payment_method || '',
     });
     setEditDialogOpen(true);
@@ -165,7 +180,8 @@ const RentManagementNew = () => {
   const resetForm = () => {
     setPaymentForm({
       tenant_id: '',
-      amount: 0,
+      property_id: '',
+      amount: '',
       month: '',
       due_date: '',
       paid_date: '',
@@ -182,11 +198,11 @@ const RentManagementNew = () => {
 
   // Calculate current month stats
   const currentMonth = format(new Date(), 'MMMM yyyy');
-  const currentMonthPayments = payments.filter(p => p.month === currentMonth);
-  const totalExpected = currentMonthPayments.reduce((sum, p) => sum + p.amount, 0);
+  const currentMonthPayments = payments.filter((p) => p.month === currentMonth);
+  const totalExpected = currentMonthPayments.reduce((sum, p) => sum + (p.amount ?? 0), 0);
   const totalCollected = currentMonthPayments
-    .filter(p => p.status === 'paid')
-    .reduce((sum, p) => sum + p.amount, 0);
+    .filter((p) => p.status === 'paid')
+    .reduce((sum, p) => sum + (p.amount ?? 0), 0);
   const totalOutstanding = totalExpected - totalCollected;
 
   const getStatusIcon = (status: string) => {
@@ -328,10 +344,10 @@ const RentManagementNew = () => {
               <tbody>
                 {filteredPayments.map((payment) => (
                   <tr key={payment.id} className="border-b hover:bg-gray-50">
-                    <td className="p-3 font-medium">{payment.tenants?.full_name || 'Unknown'}</td>
-                    <td className="p-3 text-sm text-gray-600">{payment.properties?.name || 'N/A'}</td>
+                    <td className="p-3 font-medium">{payment.tenant?.full_name ?? 'Unknown'}</td>
+                    <td className="p-3 text-sm text-gray-600">{payment.property?.name ?? 'N/A'}</td>
                     <td className="p-3 text-sm">{payment.month}</td>
-                    <td className="p-3 text-right font-semibold">${payment.amount.toLocaleString()}</td>
+                    <td className="p-3 text-right font-semibold">${(payment.amount ?? 0).toLocaleString()}</td>
                     <td className="p-3">
                       <div className="flex items-center justify-center gap-2">
                         {getStatusIcon(payment.status)}
@@ -394,11 +410,12 @@ const RentManagementNew = () => {
               <Select
                 value={paymentForm.tenant_id}
                 onValueChange={(value) => {
-                  const tenant = tenants.find(t => t.id === value);
-                  setPaymentForm({ 
-                    ...paymentForm, 
+                  const tenant = tenants.find((t) => t.id === value);
+                  setPaymentForm({
+                    ...paymentForm,
                     tenant_id: value,
-                    amount: tenant?.monthly_rent || 0
+                    property_id: tenant?.property?.id ?? '',
+                    amount: tenant?.monthly_rent ? tenant.monthly_rent.toString() : '',
                   });
                 }}
               >
@@ -421,7 +438,7 @@ const RentManagementNew = () => {
                   id="amount"
                   type="number"
                   value={paymentForm.amount}
-                  onChange={(e) => setPaymentForm({ ...paymentForm, amount: parseFloat(e.target.value) })}
+                  onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
@@ -448,7 +465,9 @@ const RentManagementNew = () => {
                 <Label htmlFor="status">Status *</Label>
                 <Select
                   value={paymentForm.status}
-                  onValueChange={(value) => setPaymentForm({ ...paymentForm, status: value })}
+                  onValueChange={(value) =>
+                    setPaymentForm({ ...paymentForm, status: value as PaymentStatus })
+                  }
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -512,7 +531,7 @@ const RentManagementNew = () => {
                   id="edit_amount"
                   type="number"
                   value={paymentForm.amount}
-                  onChange={(e) => setPaymentForm({ ...paymentForm, amount: parseFloat(e.target.value) })}
+                  onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
@@ -538,7 +557,9 @@ const RentManagementNew = () => {
                 <Label htmlFor="edit_status">Status</Label>
                 <Select
                   value={paymentForm.status}
-                  onValueChange={(value) => setPaymentForm({ ...paymentForm, status: value })}
+                  onValueChange={(value) =>
+                    setPaymentForm({ ...paymentForm, status: value as PaymentStatus })
+                  }
                 >
                   <SelectTrigger>
                     <SelectValue />

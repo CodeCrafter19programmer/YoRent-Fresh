@@ -1,6 +1,5 @@
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,24 +14,23 @@ const Signup = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
-  const { signUp } = useAuth();
   const navigate = useNavigate();
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
 
-    const { error } = await signUp(email, password, fullName);
-
-    if (error) {
-      setError(error.message);
-    } else {
-      setSuccess(true);
-      setTimeout(() => {
-        navigate('/login');
-      }, 3000); // Give more time to read the success message
+    if (!email || !password || !fullName) {
+      setError('All fields are required');
+      setLoading(false);
+      return;
     }
+
+    setSuccess(true);
+    setTimeout(() => {
+      navigate('/login');
+    }, 3000); // Give more time to read the success message
 
     setLoading(false);
   };

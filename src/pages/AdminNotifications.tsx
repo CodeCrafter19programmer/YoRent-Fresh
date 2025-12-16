@@ -1,6 +1,11 @@
-import { useEffect, useState } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
-import { mockApi } from '@/lib/mockApi';
+import { useEffect, useState, type FormEvent } from 'react';
+import {
+  paymentService,
+  tenantService,
+  notificationService,
+  type DbPayment,
+  type DbTenant,
+} from '@/lib/supabaseApi';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,18 +31,9 @@ interface AdminNotification {
   created_at: string;
 }
 
-interface Tenant {
-  id: string;
-  user_id: string;
-  full_name: string;
-  email: string;
-  property: {
-    name: string;
-  };
-}
+type Tenant = DbTenant;
 
 const AdminNotifications = () => {
-  const { userRole } = useAuth();
   const [notifications, setNotifications] = useState<AdminNotification[]>([]);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,16 +47,14 @@ const AdminNotifications = () => {
   });
 
   useEffect(() => {
-    if (userRole === 'admin') {
-      fetchAdminNotifications();
-      fetchTenants();
-    }
-  }, [userRole]);
+    fetchAdminNotifications();
+    fetchTenants();
+  }, []);
 
   const fetchAdminNotifications = async () => {
     try {
-      const payments = await mockApi.getPayments();
-      const paymentNotifications: AdminNotification[] = payments.map((payment: any) => {
+      const payments = await paymentService.list();
+      const paymentNotifications: AdminNotification[] = payments.map((payment: DbPayment) => {
         let type = 'payment_created';
         let title = 'New Payment Record';
         let message = `Payment record created for ${payment.tenant?.full_name}`;
@@ -88,7 +82,7 @@ const AdminNotifications = () => {
           property_name: payment.property?.name,
           amount: payment.amount,
           due_date: payment.due_date,
-          created_at: new Date().toISOString()
+          created_at: payment.updated_at ?? payment.created_at,
         };
       });
 
@@ -103,33 +97,30 @@ const AdminNotifications = () => {
 
   const fetchTenants = async () => {
     try {
-      const data = await mockApi.getActiveTenants();
-      setTenants(data as any);
+      const data = await tenantService.listActive();
+      setTenants(data);
     } catch (error) {
       console.error('Error fetching tenants:', error);
     }
   };
 
-  const handlePaymentChange = (payload: any) => {
-    // Refresh notifications when payments change
-    fetchAdminNotifications();
-  };
-
-  const handleSendNotification = async (e: React.FormEvent) => {
+  const handleSendNotification = async (e: FormEvent) => {
     e.preventDefault();
     
     try {
       if (formData.recipient === 'all') {
         // Send to all tenants
         for (const tenant of tenants) {
-          await mockApi.createNotification(tenant.user_id, formData.title, formData.message, formData.type);
+          if (!tenant.user_id) continue;
+          await notificationService.create(tenant.user_id, formData.title, formData.message, formData.type);
         }
         toast.success(`Notification sent to ${tenants.length} tenants`);
       } else {
         // Send to specific tenant
-        const tenant = tenants.find(t => t.id === formData.tenant_id);
+        const tenant = tenants.find((t) => t.id === formData.tenant_id);
         if (!tenant) throw new Error('Tenant not found');
-        await mockApi.createNotification(tenant.user_id, formData.title, formData.message, formData.type);
+        if (!tenant.user_id) throw new Error('Tenant does not have an associated user');
+        await notificationService.create(tenant.user_id, formData.title, formData.message, formData.type);
         toast.success('Notification sent successfully');
       }
 
@@ -184,17 +175,6 @@ const AdminNotifications = () => {
     
     return { paymentReceived, paymentOverdue, paymentDueSoon };
   };
-
-  if (userRole !== 'admin') {
-    return (
-      <Alert variant="destructive">
-        <AlertTriangle className="h-4 w-4" />
-        <AlertDescription>
-          Access denied. Admin privileges required.
-        </AlertDescription>
-      </Alert>
-    );
-  }
 
   if (loading) {
     return (
@@ -318,7 +298,8 @@ const AdminNotifications = () => {
                         <SelectContent>
                           {tenants.map((tenant) => (
                             <SelectItem key={tenant.id} value={tenant.id}>
-                              {tenant.full_name} - {tenant.property.name}
+                              {tenant.full_name}
+                              {tenant.property?.name ? ` - ${tenant.property.name}` : ''}
                             </SelectItem>
                           ))}
                         </SelectContent>

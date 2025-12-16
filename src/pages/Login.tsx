@@ -1,45 +1,52 @@
-import { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
+import { useState, type FormEvent } from 'react';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, Home } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const { signIn, user, userRole } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const { signIn, profile } = useAuth();
 
-  // If a user session already exists and role is known, redirect out of /login
-  useEffect(() => {
-    if (!user) return;
-    if (!userRole) return; // wait for role to resolve
-    if (userRole === 'admin') {
-      navigate('/admin/payments', { replace: true });
-    } else {
-      navigate('/tenant/dashboard', { replace: true });
-    }
-  }, [user, userRole, navigate]);
+  const redirectTo = (role: 'admin' | 'tenant') => {
+    const fallback = role === 'admin' ? '/admin/dashboard' : '/tenant/dashboard';
+    const from = (location.state as { from?: { pathname: string } } | null)?.from?.pathname;
+    navigate(from ?? fallback, { replace: true });
+  };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      const { error } = await signIn(email, password);
-      if (error) {
-        setError(error.message || 'Sign in failed');
+      if (!email || !password) {
+        setError('Email and password are required');
         return;
       }
-      navigate('/');
-    } catch (err: any) {
-      setError(err?.message || 'Unexpected error during sign in');
+      const { error, profile: signedInProfile } = await signIn({ email, password });
+      if (error) {
+        setError(error.message);
+        return;
+      }
+
+      const nextProfile = signedInProfile ?? profile;
+      if (!nextProfile) {
+        setError('Unable to load your account. Please try again.');
+        return;
+      }
+
+      redirectTo(nextProfile.role);
+    } catch (err) {
+      setError('Unexpected error during sign in');
       console.error('Login submit exception:', err);
     } finally {
       setLoading(false);

@@ -3,7 +3,14 @@ import { Building2, Users, DollarSign, TrendingUp, Home, AlertCircle } from 'luc
 import { StatCard } from '@/components/StatCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { mockApi } from '@/lib/mockApi';
+import {
+  propertyService,
+  tenantService,
+  paymentService,
+  type PropertyWithTenants,
+  type DbTenant,
+  type DbPayment,
+} from '@/lib/supabaseApi';
 import { useNavigate } from 'react-router-dom';
 import {
   BarChart,
@@ -57,38 +64,41 @@ const Dashboard = () => {
 
   const fetchDashboardData = async () => {
     try {
-      const properties = await mockApi.getProperties();
-      const tenants = await mockApi.getTenants();
-      const payments = await mockApi.getPayments();
+      const [properties, tenants, payments] = await Promise.all([
+        propertyService.list(),
+        tenantService.list(),
+        paymentService.list(),
+      ]);
 
-      const totalProperties = properties?.length || 0;
-      const occupiedProperties = properties?.filter(p => p.status === 'occupied').length || 0;
-      const vacantProperties = properties?.filter(p => p.status === 'vacant').length || 0;
-      const totalTenants = tenants?.filter(t => t.status === 'active').length || 0;
+      const totalProperties = properties.length;
+      const occupiedProperties = properties.filter((p) => p.status === 'occupied').length;
+      const vacantProperties = totalProperties - occupiedProperties;
+      const totalTenants = tenants.filter((t) => t.status === 'active').length;
 
-      // Calculate rent statistics
-      const totalRentExpected = properties?.filter(p => p.status === 'occupied')
-        .reduce((sum, p) => sum + p.monthly_rent, 0) || 0;
-      
-      const totalRentCollected = payments?.filter(p => p.status === 'paid')
-        .reduce((sum, p) => sum + p.amount, 0) || 0;
-      
-      const outstandingRent = payments?.filter(p => p.status === 'unpaid')
-        .reduce((sum, p) => sum + p.amount, 0) || 0;
+      const totalRentExpected = properties
+        .filter((property) => property.status === 'occupied')
+        .reduce((sum, property) => sum + property.monthly_rent, 0);
 
-      const overduePayments = payments?.filter(p => 
-        p.status === 'unpaid' && new Date(p.due_date) < new Date()
-      ).length || 0;
+      const totalRentCollected = payments
+        .filter((payment) => payment.status === 'paid')
+        .reduce((sum, payment) => sum + (payment.amount ?? 0), 0);
 
-      // Get unpaid rent details
-      const unpaid = payments?.filter(p => 
-        p.status === 'unpaid' && new Date(p.due_date) < new Date()
-      ).map(p => ({
-        tenant_name: (p as any).tenant?.full_name || 'Unknown',
-        property_name: (p as any).property?.name || 'Unknown',
-        amount: p.amount,
-        days_overdue: Math.floor((new Date().getTime() - new Date(p.due_date).getTime()) / (1000 * 60 * 60 * 24))
-      })) || [];
+      const outstandingRent = payments
+        .filter((payment) => payment.status === 'unpaid')
+        .reduce((sum, payment) => sum + (payment.amount ?? 0), 0);
+
+      const overduePayments = payments.filter(
+        (payment) => payment.status === 'unpaid' && payment.due_date && new Date(payment.due_date) < new Date()
+      );
+
+      const unpaid = overduePayments.map((payment) => ({
+        tenant_name: payment.tenant?.full_name ?? 'Unknown',
+        property_name: payment.property?.name ?? 'Unknown',
+        amount: payment.amount ?? 0,
+        days_overdue: payment.due_date
+          ? Math.floor((Date.now() - new Date(payment.due_date).getTime()) / (1000 * 60 * 60 * 24))
+          : 0,
+      }));
 
       setStats({
         totalProperties,
@@ -98,7 +108,7 @@ const Dashboard = () => {
         totalRentExpected,
         totalRentCollected,
         outstandingRent,
-        overduePayments,
+        overduePayments: overduePayments.length,
       });
 
       setUnpaidRentList(unpaid.slice(0, 5));

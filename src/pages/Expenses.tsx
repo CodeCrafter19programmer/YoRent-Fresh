@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { StatCard } from '@/components/StatCard';
-import { mockApi } from '@/lib/mockApi';
+import { expenseService, propertyService, type DbExpense, type PropertyWithTenants } from '@/lib/supabaseApi';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import {
@@ -21,26 +21,16 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 
-interface Expense {
-  id: string;
-  property_id: string;
-  category: string;
-  description: string;
-  amount: number;
-  expense_date: string;
-  properties?: {
-    name: string;
-  };
-}
+type Expense = DbExpense;
 
-interface Property {
+interface PropertyOption {
   id: string;
   name: string;
 }
 
 const ExpensesNew = () => {
   const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [properties, setProperties] = useState<Property[]>([]);
+  const [properties, setProperties] = useState<PropertyOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterCategory, setFilterCategory] = useState('all');
   const [addDialogOpen, setAddDialogOpen] = useState(false);
@@ -52,7 +42,7 @@ const ExpensesNew = () => {
     property_id: '',
     category: 'utilities',
     description: '',
-    amount: 0,
+    amount: '',
     expense_date: '',
   });
 
@@ -62,14 +52,16 @@ const ExpensesNew = () => {
   }, []);
 
   const fetchExpenses = async () => {
+    setLoading(true);
     try {
-      const data = await mockApi.getExpenses();
-      // Sort by date desc to keep behavior similar
-      setExpenses((data || []).sort((a, b) => new Date(b.expense_date).getTime() - new Date(a.expense_date).getTime()) as any);
-    } catch (error: any) {
+      const data = await expenseService.list();
+      setExpenses(
+        data.sort((a, b) => new Date(b.expense_date).getTime() - new Date(a.expense_date).getTime())
+      );
+    } catch (error) {
       toast({
         title: 'Error',
-        description: error.message,
+        description: error instanceof Error ? error.message : 'Failed to load expenses',
         variant: 'destructive',
       });
     } finally {
@@ -79,26 +71,40 @@ const ExpensesNew = () => {
 
   const fetchProperties = async () => {
     try {
-      const data = await mockApi.getPropertiesLite();
-      setProperties(data || []);
-    } catch (error: any) {
+      const data = await propertyService.list();
+      const options: PropertyOption[] = data.map((property: PropertyWithTenants) => ({
+        id: property.id,
+        name: property.name,
+      }));
+      setProperties(options);
+    } catch (error) {
       console.error('Error fetching properties:', error);
     }
   };
 
   const handleAddExpense = async () => {
     try {
-      const { error } = await mockApi.addExpense(expenseForm as any);
-      if (error) throw error;
+      const amount = Number.parseFloat(expenseForm.amount);
+      if (Number.isNaN(amount)) {
+        throw new Error('Amount must be a valid number');
+      }
+
+      await expenseService.create({
+        property_id: expenseForm.property_id,
+        category: expenseForm.category,
+        description: expenseForm.description || null,
+        amount,
+        expense_date: expenseForm.expense_date,
+      });
 
       toast({ title: 'Success', description: 'Expense added successfully' });
       setAddDialogOpen(false);
       resetForm();
       fetchExpenses();
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'Error',
-        description: error.message,
+        description: error instanceof Error ? error.message : 'Failed to add expense',
         variant: 'destructive',
       });
     }
@@ -108,17 +114,27 @@ const ExpensesNew = () => {
     if (!selectedExpense) return;
 
     try {
-      const { error } = await mockApi.updateExpense(selectedExpense.id, expenseForm as any);
-      if (error) throw error;
+      const amount = Number.parseFloat(expenseForm.amount);
+      if (Number.isNaN(amount)) {
+        throw new Error('Amount must be a valid number');
+      }
+
+      await expenseService.update(selectedExpense.id, {
+        property_id: expenseForm.property_id,
+        category: expenseForm.category,
+        description: expenseForm.description || null,
+        amount,
+        expense_date: expenseForm.expense_date,
+      });
 
       toast({ title: 'Success', description: 'Expense updated successfully' });
       setEditDialogOpen(false);
       setSelectedExpense(null);
       fetchExpenses();
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'Error',
-        description: error.message,
+        description: error instanceof Error ? error.message : 'Failed to update expense',
         variant: 'destructive',
       });
     }
@@ -128,15 +144,14 @@ const ExpensesNew = () => {
     if (!confirm('Are you sure you want to delete this expense?')) return;
 
     try {
-      const { error } = await mockApi.deleteExpense(expenseId);
-      if (error) throw error;
+      await expenseService.remove(expenseId);
 
       toast({ title: 'Success', description: 'Expense deleted successfully' });
       fetchExpenses();
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'Error',
-        description: error.message,
+        description: error instanceof Error ? error.message : 'Failed to delete expense',
         variant: 'destructive',
       });
     }
@@ -147,8 +162,8 @@ const ExpensesNew = () => {
     setExpenseForm({
       property_id: expense.property_id,
       category: expense.category,
-      description: expense.description,
-      amount: expense.amount,
+      description: expense.description ?? '',
+      amount: expense.amount.toString(),
       expense_date: expense.expense_date,
     });
     setEditDialogOpen(true);
@@ -159,7 +174,7 @@ const ExpensesNew = () => {
       property_id: '',
       category: 'utilities',
       description: '',
-      amount: 0,
+      amount: '',
       expense_date: '',
     });
   };
@@ -173,12 +188,12 @@ const ExpensesNew = () => {
   const currentMonthExpenses = expenses.filter(e => 
     format(new Date(e.expense_date), 'MMMM yyyy') === currentMonth
   );
-  const totalThisMonth = currentMonthExpenses.reduce((sum, e) => sum + e.amount, 0);
-  const totalAllTime = expenses.reduce((sum, e) => sum + e.amount, 0);
+  const totalThisMonth = currentMonthExpenses.reduce((sum, e) => sum + (e.amount ?? 0), 0);
+  const totalAllTime = expenses.reduce((sum, e) => sum + (e.amount ?? 0), 0);
 
   // Group by category
   const expensesByCategory = expenses.reduce((acc, expense) => {
-    acc[expense.category] = (acc[expense.category] || 0) + expense.amount;
+    acc[expense.category] = (acc[expense.category] || 0) + (expense.amount ?? 0);
     return acc;
   }, {} as Record<string, number>);
 
@@ -195,7 +210,7 @@ const ExpensesNew = () => {
     );
     return {
       month,
-      amount: monthExpenses.reduce((sum, e) => sum + e.amount, 0),
+      amount: monthExpenses.reduce((sum, e) => sum + (e.amount ?? 0), 0),
     };
   });
 
@@ -319,7 +334,7 @@ const ExpensesNew = () => {
               <tbody>
                 {filteredExpenses.map((expense) => (
                   <tr key={expense.id} className="border-b hover:bg-gray-50">
-                    <td className="p-3 font-medium">{expense.properties?.name || 'Unknown'}</td>
+                    <td className="p-3 font-medium">{expense.property?.name ?? 'Unknown'}</td>
                     <td className="p-3">
                       <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
                         {expense.category}

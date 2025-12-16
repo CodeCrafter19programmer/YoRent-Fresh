@@ -1,45 +1,24 @@
-// Frontend-only mock of Supabase client. Returns predictable, fast-resolving values.
-// This allows all pages to render without a backend. The mock is chainable and
-// awaitable from any point in the chain by implementing a `then` method.
+import { createClient } from '@supabase/supabase-js';
 
-type SupabaseResult<T = any> = { data: T; error: null };
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-// Minimal query builder with chainable helpers used across pages
-class MockQueryBuilder {
-  private table: string;
-  private _data: any[];
-  constructor(table: string) {
-    this.table = table;
-    this._data = [];
-  }
-  // Chain methods return `this` to allow further chaining
-  select() { return this; }
-  insert() { return this; }
-  update() { return this; }
-  delete() { return this; }
-  upsert() { return this; }
-  order() { return this; }
-  limit() { return this; }
-  single() { return this; }
-  maybeSingle() { return this; }
-  eq() { return this; }
-  // Make the builder awaitable
-  then(resolve: (v: SupabaseResult) => void) {
-    resolve({ data: Array.isArray(this._data) ? this._data : null, error: null });
-  }
+if (!supabaseUrl) {
+  console.warn('VITE_SUPABASE_URL is not set. Supabase client will not be able to connect.');
 }
 
-export const supabase: any = {
-  from: (table: string) => new MockQueryBuilder(table),
-  channel: (_name: string) => ({
-    on: () => ({ subscribe: () => ({ unsubscribe: () => {} }) }),
-    subscribe: () => ({ unsubscribe: () => {} }),
-  }),
-  auth: {
-    signInWithPassword: async () => ({ data: { user: { id: 'mock-user' }, session: {} }, error: null }),
-    signUp: async () => ({ data: { user: { id: 'mock-user' } }, error: null }),
-    signOut: async () => ({ error: null }),
-    getSession: async () => ({ data: { session: null } }),
-    onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
-  },
-};
+if (!supabaseAnonKey) {
+  console.warn('VITE_SUPABASE_ANON_KEY is not set. Supabase client will not be able to authenticate.');
+}
+
+export const supabase = createClient(
+  supabaseUrl ?? '',
+  supabaseAnonKey ?? '',
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      storageKey: 'yorent.auth',
+    },
+  }
+);

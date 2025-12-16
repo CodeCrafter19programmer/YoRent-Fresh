@@ -6,35 +6,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { mockApi } from '@/lib/mockApi';
+import { tenantService, type DbTenant, type DbPayment } from '@/lib/supabaseApi';
 import { useToast } from '@/hooks/use-toast';
 import { InvoiceModal } from '@/components/InvoiceModal';
 
-interface Tenant {
-  id: string;
-  full_name: string;
-  email: string;
-  phone: string | null;
-  monthly_rent: number;
-  lease_start: string | null;
-  lease_end: string | null;
-  status: string;
-  deposit: number | null;
-  property: {
-    id: string;
-    name: string;
-    address: string;
-  } | null;
-}
+type Tenant = DbTenant;
 
-interface Payment {
-  id: string;
-  amount: number;
-  month: string;
-  due_date: string;
-  paid_date: string | null;
-  status: string;
-}
+type Payment = DbPayment;
 
 const TenantsNew = () => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -63,13 +41,14 @@ const TenantsNew = () => {
   }, []);
 
   const fetchTenants = async () => {
+    setLoading(true);
     try {
-      const data = await mockApi.getTenants();
-      setTenants(data || []);
-    } catch (error: any) {
+      const data = await tenantService.list();
+      setTenants(data);
+    } catch (error) {
       toast({
         title: 'Error',
-        description: error.message,
+        description: error instanceof Error ? error.message : 'Failed to load tenants',
         variant: 'destructive',
       });
     } finally {
@@ -79,14 +58,16 @@ const TenantsNew = () => {
 
   const fetchTenantPayments = async (tenantId: string) => {
     try {
-      const data = await mockApi.getTenantPayments(tenantId);
-      setPayments(data || []);
-    } catch (error: any) {
+      const data = await tenantService.getPayments(tenantId);
+      setPayments(data);
+      return data;
+    } catch (error) {
       toast({
         title: 'Error',
-        description: error.message,
+        description: error instanceof Error ? error.message : 'Failed to load payments',
         variant: 'destructive',
       });
+      return [] as Payment[];
     }
   };
 
@@ -109,8 +90,16 @@ const TenantsNew = () => {
     if (!selectedTenant) return;
 
     try {
-      const { error } = await mockApi.updateTenant(selectedTenant.id, editForm);
-      if (error) throw error;
+      await tenantService.update(selectedTenant.id, {
+        full_name: editForm.full_name,
+        email: editForm.email,
+        phone: editForm.phone,
+        monthly_rent: editForm.monthly_rent,
+        lease_start: editForm.lease_start || null,
+        lease_end: editForm.lease_end || null,
+        deposit: editForm.deposit,
+        status: editForm.status,
+      });
 
       toast({
         title: 'Success',
@@ -118,10 +107,10 @@ const TenantsNew = () => {
       });
       setEditDialogOpen(false);
       fetchTenants();
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'Error',
-        description: error.message,
+        description: error instanceof Error ? error.message : 'Failed to update tenant',
         variant: 'destructive',
       });
     }
@@ -129,10 +118,14 @@ const TenantsNew = () => {
 
   const handleGenerateInvoice = async (tenant: Tenant) => {
     setSelectedTenant(tenant);
-    await fetchTenantPayments(tenant.id);
-    
-    if (payments.length > 0) {
-      setSelectedPayment(payments[0]); // Latest payment
+    const tenantPayments = await fetchTenantPayments(tenant.id);
+
+    const latestPaidPayment = tenantPayments
+      .filter((payment) => payment.status === 'paid')
+      .sort((a, b) => new Date(b.paid_date ?? b.due_date).getTime() - new Date(a.paid_date ?? a.due_date).getTime())[0];
+
+    if (latestPaidPayment) {
+      setSelectedPayment(latestPaidPayment);
       setInvoiceDialogOpen(true);
     } else {
       toast({
@@ -147,7 +140,7 @@ const TenantsNew = () => {
     (tenant) =>
       tenant.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       tenant.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      tenant.property?.name.toLowerCase().includes(searchQuery.toLowerCase())
+      tenant.property?.name?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const getInitials = (name: string) => {

@@ -5,6 +5,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Layout } from "@/components/Layout";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 
 // Lazy load pages for better performance
 const Dashboard = lazy(() => import("./pages/Dashboard"));
@@ -34,43 +36,65 @@ const queryClient = new QueryClient();
 
 // FRONTEND ONLY - No authentication, no database connections
 // Backend will be reconfigured separately
+const RootRedirect = () => {
+  const { profile, loading } = useAuth();
+
+  if (loading) {
+    return <PageLoader />;
+  }
+
+  if (!profile) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return profile.role === "admin"
+    ? <Navigate to="/admin/dashboard" replace />
+    : <Navigate to="/tenant/dashboard" replace />;
+};
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <Suspense fallback={<PageLoader />}>
-          <Routes>
-            {/* Public routes - UI only, no auth */}
-            <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<Signup />} />
-            <Route path="/unauthorized" element={<Unauthorized />} />
-            
-            {/* Root redirects to dashboard */}
-            <Route path="/" element={<Navigate to="/admin/dashboard" replace />} />
-            
-            {/* Admin routes - UI displayed without authentication */}
-            <Route path="/admin/dashboard" element={<Layout><Dashboard /></Layout>} />
-            <Route path="/properties" element={<Layout><Properties /></Layout>} />
-            <Route path="/tenants" element={<Layout><Tenants /></Layout>} />
-            <Route path="/rent" element={<Layout><RentManagement /></Layout>} />
-            <Route path="/expenses" element={<Layout><Expenses /></Layout>} />
-            <Route path="/admin/payments" element={<Layout><AdminPayments /></Layout>} />
-            <Route path="/admin/notifications" element={<Layout><AdminNotifications /></Layout>} />
-            <Route path="/admin/tax" element={<Layout><TaxAccountability /></Layout>} />
-            <Route path="/settings" element={<Layout><Settings /></Layout>} />
-            <Route path="/policies" element={<Layout><Policies /></Layout>} />
-            
-            {/* Tenant routes */}
-            <Route path="/tenant/dashboard" element={<TenantDashboard />} />
-            
-            {/* Catch all */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </Suspense>
-      </BrowserRouter>
-    </TooltipProvider>
+    <AuthProvider>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
+              {/* Public routes */}
+              <Route path="/login" element={<Login />} />
+              <Route path="/signup" element={<Signup />} />
+              <Route path="/unauthorized" element={<Unauthorized />} />
+
+              {/* Root redirect based on role */}
+              <Route path="/" element={<RootRedirect />} />
+
+              {/* Admin routes */}
+              <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
+                <Route path="/admin/dashboard" element={<Layout><Dashboard /></Layout>} />
+                <Route path="/properties" element={<Layout><Properties /></Layout>} />
+                <Route path="/tenants" element={<Layout><Tenants /></Layout>} />
+                <Route path="/rent" element={<Layout><RentManagement /></Layout>} />
+                <Route path="/expenses" element={<Layout><Expenses /></Layout>} />
+                <Route path="/admin/payments" element={<Layout><AdminPayments /></Layout>} />
+                <Route path="/admin/notifications" element={<Layout><AdminNotifications /></Layout>} />
+                <Route path="/admin/tax" element={<Layout><TaxAccountability /></Layout>} />
+                <Route path="/settings" element={<Layout><Settings /></Layout>} />
+                <Route path="/policies" element={<Layout><Policies /></Layout>} />
+              </Route>
+
+              {/* Tenant routes */}
+              <Route element={<ProtectedRoute allowedRoles={["tenant"]} />}>
+                <Route path="/tenant/dashboard" element={<TenantDashboard />} />
+              </Route>
+
+              {/* Catch all */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Suspense>
+        </BrowserRouter>
+      </TooltipProvider>
+    </AuthProvider>
   </QueryClientProvider>
 );
 

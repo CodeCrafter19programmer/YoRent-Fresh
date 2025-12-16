@@ -1,6 +1,12 @@
-import { useEffect, useState } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
-import { mockApi } from '@/lib/mockApi';
+import { useEffect, useState, type FormEvent } from 'react';
+import {
+  taxService,
+  paymentService,
+  expenseService,
+  type DbTaxRecord,
+  type DbExpense,
+  type DbPayment,
+} from '@/lib/supabaseApi';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,51 +16,27 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Calculator, Plus, Edit, DollarSign, TrendingUp, FileText, AlertTriangle } from 'lucide-react';
-import { format } from 'date-fns';
 import { toast } from 'sonner';
 
-interface TaxRecord {
-  id: string;
-  month: string;
-  year: number;
-  total_revenue: number;
-  total_utilities: number;
-  electricity: number;
-  water: number;
-  gas: number;
-  maintenance: number;
-  other_expenses: number;
-  net_income: number;
-  tax_rate: number;
-  tax_amount: number;
-  created_at: string;
-  updated_at: string;
-}
+type TaxRecord = DbTaxRecord;
 
-interface Property {
-  id: string;
-  name: string;
-}
-
-interface UtilityExpense {
+interface UtilityExpenseSummary {
   id: string;
   property_id: string;
+  property_name: string;
   month: string;
   electricity: number;
   water: number;
   gas: number;
   maintenance: number;
   other: number;
-  property: {
-    name: string;
-  };
 }
 
 const TaxAccountability = () => {
-  const { userRole } = useAuth();
   const [taxRecords, setTaxRecords] = useState<TaxRecord[]>([]);
-  const [properties, setProperties] = useState<Property[]>([]);
-  const [utilityExpenses, setUtilityExpenses] = useState<UtilityExpense[]>([]);
+  const [utilityExpenses, setUtilityExpenses] = useState<UtilityExpenseSummary[]>([]);
+  const [cachedPayments, setCachedPayments] = useState<DbPayment[]>([]);
+  const [cachedExpenses, setCachedExpenses] = useState<DbExpense[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<TaxRecord | null>(null);
@@ -66,79 +48,109 @@ const TaxAccountability = () => {
   });
 
   useEffect(() => {
-    if (userRole === 'admin') {
-      fetchTaxRecords();
-      fetchProperties();
-      fetchUtilityExpenses();
-    }
-  }, [userRole, selectedYear]);
+    fetchTaxRecords();
+  }, [selectedYear]);
+
+  useEffect(() => {
+    preloadFinancialSnapshots();
+  }, []);
 
   const fetchTaxRecords = async () => {
-    // In frontend-only mode, we don't persist tax records. Leave the list as-is.
-    setTaxRecords(prev => prev);
-  };
-
-  const createTaxRecordsTable = async () => {
-    // No-op in mock mode
-    setTaxRecords([]);
-  };
-
-  const fetchProperties = async () => {
+    setLoading(true);
     try {
-      const data = await mockApi.getPropertiesLite();
-      setProperties(data || []);
+      const data = await taxService.list(selectedYear);
+      setTaxRecords(data);
     } catch (error) {
-      console.error('Error fetching properties:', error);
-    }
-  };
-
-  const fetchUtilityExpenses = async () => {
-    try {
-      const data = await mockApi.getExpenses();
-      setUtilityExpenses((data as any[]).map(e => ({
-        id: e.id,
-        property_id: e.property_id,
-        month: new Date(e.expense_date).toLocaleString('en-US', { month: 'long' }),
-        electricity: e.category === 'utilities' ? e.amount : 0,
-        water: 0,
-        gas: 0,
-        maintenance: e.category === 'maintenance' ? e.amount : 0,
-        other: e.category !== 'utilities' && e.category !== 'maintenance' ? e.amount : 0,
-        property: { name: (e as any).properties?.name || 'N/A' },
-      })) as any);
-    } catch (error) {
-      console.error('Error fetching utility expenses:', error);
+      console.error('Error fetching tax records:', error);
+      toast.error('Failed to fetch tax records');
     } finally {
       setLoading(false);
     }
   };
 
+  const preloadFinancialSnapshots = async () => {
+    try {
+      const [payments, expenses] = await Promise.all([
+        paymentService.list(),
+        expenseService.list(),
+      ]);
+      setCachedPayments(payments);
+      setCachedExpenses(expenses);
+      setUtilityExpenses(transformUtilityExpenses(expenses));
+    } catch (error) {
+      console.error('Error loading financial data:', error);
+      toast.error('Failed to load financial data');
+    }
+  };
+
+  const transformUtilityExpenses = (expenses: DbExpense[]): UtilityExpenseSummary[] =>
+    expenses.map((expense) => ({
+      id: expense.id,
+      property_id: expense.property_id,
+      property_name: expense.property?.name ?? 'N/A',
+      month: new Date(expense.expense_date).toLocaleString('en-US', { month: 'long' }),
+      electricity: expense.category === 'utilities' ? expense.amount ?? 0 : 0,
+      water: 0,
+      gas: 0,
+      maintenance: expense.category === 'maintenance' ? expense.amount ?? 0 : 0,
+      other:
+        expense.category !== 'utilities' && expense.category !== 'maintenance'
+          ? expense.amount ?? 0
+          : 0,
+    }));
+
   const calculateMonthlyTaxRecord = async (month: string, year: number) => {
-    // Approximate calculation from mock data
-    const payments = await mockApi.getPayments();
-    const expenses = await mockApi.getExpenses();
-    const monthMatches = (d: string) => {
-      const date = new Date(d);
+    let payments = cachedPayments;
+    let expenses = cachedExpenses;
+
+    if (!payments.length || !expenses.length) {
+      const [freshPayments, freshExpenses] = await Promise.all([
+        paymentService.list(),
+        expenseService.list(),
+      ]);
+      payments = freshPayments;
+      expenses = freshExpenses;
+      setCachedPayments(freshPayments);
+      setCachedExpenses(freshExpenses);
+      setUtilityExpenses(transformUtilityExpenses(freshExpenses));
+    }
+
+    const monthMatches = (dateString: string | null | undefined) => {
+      if (!dateString) return false;
+      const date = new Date(dateString);
       const m = date.toLocaleString('en-US', { month: 'long' });
       const y = date.getFullYear();
       return m === month && y === year;
     };
 
-    const totalRevenue = (payments as any[])
-      .filter(p => p.status === 'paid' && (typeof p.month === 'string' ? p.month.includes(month) : monthMatches(p.paid_date || p.due_date)))
-      .reduce((sum, p) => sum + p.amount, 0);
+    const totalRevenue = payments
+      .filter((payment) => payment.status === 'paid')
+      .filter((payment) => {
+        if (payment.month) {
+          return payment.month.toLowerCase().includes(month.toLowerCase());
+        }
+        return monthMatches(payment.paid_date ?? payment.due_date);
+      })
+      .reduce((sum, payment) => sum + (payment.amount ?? 0), 0);
 
-    const utilitiesThisMonth = (expenses as any[]).filter(e => monthMatches(e.expense_date));
-    const electricity = utilitiesThisMonth.filter(e => e.category === 'utilities').reduce((s, e) => s + e.amount, 0);
-    const maintenance = utilitiesThisMonth.filter(e => e.category === 'maintenance').reduce((s, e) => s + e.amount, 0);
+    const expensesThisMonth = expenses.filter((expense) => monthMatches(expense.expense_date));
+    const electricity = expensesThisMonth
+      .filter((expense) => expense.category === 'utilities')
+      .reduce((sum, expense) => sum + (expense.amount ?? 0), 0);
+    const maintenance = expensesThisMonth
+      .filter((expense) => expense.category === 'maintenance')
+      .reduce((sum, expense) => sum + (expense.amount ?? 0), 0);
     const water = 0;
     const gas = 0;
-    const otherExpenses = utilitiesThisMonth.filter(e => !['utilities', 'maintenance'].includes(e.category)).reduce((s, e) => s + e.amount, 0);
-    const total_utilities = electricity + maintenance + water + gas + otherExpenses;
+    const otherExpenses = expensesThisMonth
+      .filter((expense) => !['utilities', 'maintenance'].includes(expense.category))
+      .reduce((sum, expense) => sum + (expense.amount ?? 0), 0);
 
-    const netIncome = totalRevenue - total_utilities;
-    const taxRate = parseFloat(formData.tax_rate) / 100;
-    const taxAmount = netIncome * taxRate;
+    const total_utilities = electricity + maintenance + water + gas + otherExpenses;
+    const net_income = totalRevenue - total_utilities;
+    const parsedTaxRate = Number.parseFloat(formData.tax_rate);
+    const tax_rate = Number.isNaN(parsedTaxRate) ? 0 : parsedTaxRate;
+    const tax_amount = net_income * (tax_rate / 100);
 
     return {
       month,
@@ -150,40 +162,29 @@ const TaxAccountability = () => {
       gas,
       maintenance,
       other_expenses: otherExpenses,
-      net_income: netIncome,
-      tax_rate: taxRate * 100,
-      tax_amount: taxAmount
+      net_income,
+      tax_rate,
+      tax_amount,
     };
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     
     try {
       const calculatedData = await calculateMonthlyTaxRecord(formData.month, formData.year);
-      
-      // For demo purposes, we'll store this in a mock way since the table doesn't exist
-      // In a real implementation, you would insert into the tax_records table
-      
-      const newRecord: TaxRecord = {
-        id: Date.now().toString(),
-        ...calculatedData,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
 
       if (editingRecord) {
-        setTaxRecords(prev => prev.map(record => 
-          record.id === editingRecord.id ? { ...newRecord, id: editingRecord.id } : record
-        ));
+        await taxService.update(editingRecord.id, calculatedData);
         toast.success('Tax record updated successfully');
       } else {
-        setTaxRecords(prev => [newRecord, ...prev]);
+        await taxService.create(calculatedData);
         toast.success('Tax record created successfully');
       }
 
       setIsDialogOpen(false);
       resetForm();
+      fetchTaxRecords();
     } catch (error) {
       console.error('Error saving tax record:', error);
       toast.error('Failed to save tax record');
@@ -222,17 +223,6 @@ const TaxAccountability = () => {
     
     return { totalRevenue, totalUtilities, totalNetIncome, totalTaxAmount };
   };
-
-  if (userRole !== 'admin') {
-    return (
-      <Alert variant="destructive">
-        <AlertTriangle className="h-4 w-4" />
-        <AlertDescription>
-          Access denied. Admin privileges required.
-        </AlertDescription>
-      </Alert>
-    );
-  }
 
   if (loading) {
     return (
@@ -482,7 +472,7 @@ const TaxAccountability = () => {
             <TableBody>
               {utilityExpenses.slice(0, 10).map((expense) => (
                 <TableRow key={expense.id}>
-                  <TableCell className="font-medium">{expense.property.name}</TableCell>
+                  <TableCell className="font-medium">{expense.property_name}</TableCell>
                   <TableCell>{expense.month}</TableCell>
                   <TableCell>${expense.electricity.toFixed(2)}</TableCell>
                   <TableCell>${expense.water.toFixed(2)}</TableCell>

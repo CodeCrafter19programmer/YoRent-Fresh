@@ -7,37 +7,32 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { mockApi } from '@/lib/mockApi';
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  propertyService,
+  tenantService,
+  type PropertyWithTenants,
+  type DbTenant,
+  type PropertyStatus,
+} from '@/lib/supabaseApi';
 
-interface Property {
-  id: string;
+type Property = PropertyWithTenants;
+
+type TenantOption = Pick<DbTenant, 'id' | 'full_name' | 'email'>;
+
+interface PropertyFormState {
   name: string;
   address: string;
   type: string;
-  monthly_rent: number;
-  status: string;
-  image_url: string | null;
-  created_at: string;
-  tenants?: Array<{
-    id: string;
-    full_name: string;
-    email: string;
-    status: string;
-  }>;
-}
-
-interface Tenant {
-  id: string;
-  full_name: string;
-  email: string;
-  status: string;
+  monthly_rent: string;
+  status: PropertyStatus;
+  image_url: string;
 }
 
 const PropertiesNew = () => {
   const [properties, setProperties] = useState<Property[]>([]);
-  const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [tenants, setTenants] = useState<TenantOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -46,14 +41,16 @@ const PropertiesNew = () => {
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
   const { toast } = useToast();
 
-  const [propertyForm, setPropertyForm] = useState({
+  const createEmptyForm = (): PropertyFormState => ({
     name: '',
     address: '',
     type: 'apartment',
-    monthly_rent: 0,
+    monthly_rent: '',
     status: 'vacant',
     image_url: '',
   });
+
+  const [propertyForm, setPropertyForm] = useState<PropertyFormState>(createEmptyForm());
 
   useEffect(() => {
     fetchProperties();
@@ -61,13 +58,15 @@ const PropertiesNew = () => {
   }, []);
 
   const fetchProperties = async () => {
+    setLoading(true);
     try {
-      const data = await mockApi.getProperties();
-      setProperties(data || []);
-    } catch (error: any) {
+      const data = await propertyService.list();
+      setProperties(data);
+    } catch (error) {
+      console.error('Error fetching properties:', error);
       toast({
         title: 'Error',
-        description: error.message,
+        description: error instanceof Error ? error.message : 'Failed to load properties',
         variant: 'destructive',
       });
     } finally {
@@ -77,17 +76,34 @@ const PropertiesNew = () => {
 
   const fetchTenants = async () => {
     try {
-      const data = await mockApi.getActiveTenants();
-      setTenants(data || []);
-    } catch (error: any) {
+      const data = await tenantService.listActive();
+      setTenants(
+        data.map((tenant) => ({
+          id: tenant.id,
+          full_name: tenant.full_name,
+          email: tenant.email,
+        }))
+      );
+    } catch (error) {
       console.error('Error fetching tenants:', error);
     }
   };
 
   const handleAddProperty = async () => {
     try {
-      const { error } = await mockApi.addProperty(propertyForm as any);
-      if (error) throw error;
+      const monthlyRent = Number.parseFloat(propertyForm.monthly_rent);
+      if (Number.isNaN(monthlyRent)) {
+        throw new Error('Monthly rent must be a valid number');
+      }
+
+      await propertyService.create({
+        name: propertyForm.name,
+        address: propertyForm.address,
+        type: propertyForm.type,
+        monthly_rent: monthlyRent,
+        status: propertyForm.status,
+        image_url: propertyForm.image_url || null,
+      });
 
       toast({
         title: 'Success',
@@ -96,10 +112,10 @@ const PropertiesNew = () => {
       setAddDialogOpen(false);
       resetForm();
       fetchProperties();
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'Error',
-        description: error.message,
+        description: error instanceof Error ? error.message : 'Failed to add property',
         variant: 'destructive',
       });
     }
@@ -109,8 +125,19 @@ const PropertiesNew = () => {
     if (!selectedProperty) return;
 
     try {
-      const { error } = await mockApi.updateProperty(selectedProperty.id, propertyForm as any);
-      if (error) throw error;
+      const monthlyRent = Number.parseFloat(propertyForm.monthly_rent);
+      if (Number.isNaN(monthlyRent)) {
+        throw new Error('Monthly rent must be a valid number');
+      }
+
+      await propertyService.update(selectedProperty.id, {
+        name: propertyForm.name,
+        address: propertyForm.address,
+        type: propertyForm.type,
+        monthly_rent: monthlyRent,
+        status: propertyForm.status,
+        image_url: propertyForm.image_url || null,
+      });
 
       toast({
         title: 'Success',
@@ -119,10 +146,10 @@ const PropertiesNew = () => {
       setEditDialogOpen(false);
       setSelectedProperty(null);
       fetchProperties();
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'Error',
-        description: error.message,
+        description: error instanceof Error ? error.message : 'Failed to update property',
         variant: 'destructive',
       });
     }
@@ -132,18 +159,17 @@ const PropertiesNew = () => {
     if (!confirm('Are you sure you want to delete this property?')) return;
 
     try {
-      const { error } = await mockApi.deleteProperty(propertyId);
-      if (error) throw error;
+      await propertyService.remove(propertyId);
 
       toast({
         title: 'Success',
         description: 'Property deleted successfully',
       });
       fetchProperties();
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'Error',
-        description: error.message,
+        description: error instanceof Error ? error.message : 'Failed to delete property',
         variant: 'destructive',
       });
     }
@@ -151,18 +177,17 @@ const PropertiesNew = () => {
 
   const handleAssignTenant = async (propertyId: string, tenantId: string) => {
     try {
-      const { error } = await mockApi.assignTenant(propertyId, tenantId);
-      if (error) throw error;
+      await tenantService.assignToProperty(tenantId, propertyId);
 
       toast({
         title: 'Success',
         description: 'Tenant assigned successfully',
       });
       fetchProperties();
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'Error',
-        description: error.message,
+        description: error instanceof Error ? error.message : 'Failed to assign tenant',
         variant: 'destructive',
       });
     }
@@ -174,7 +199,7 @@ const PropertiesNew = () => {
       name: property.name,
       address: property.address,
       type: property.type,
-      monthly_rent: property.monthly_rent,
+      monthly_rent: property.monthly_rent.toString(),
       status: property.status,
       image_url: property.image_url || '',
     });
@@ -182,14 +207,7 @@ const PropertiesNew = () => {
   };
 
   const resetForm = () => {
-    setPropertyForm({
-      name: '',
-      address: '',
-      type: 'apartment',
-      monthly_rent: 0,
-      status: 'vacant',
-      image_url: '',
-    });
+    setPropertyForm(createEmptyForm());
   };
 
   const filteredProperties = properties.filter((property) => {
@@ -455,7 +473,7 @@ const PropertiesNew = () => {
                   type="number"
                   placeholder="1200"
                   value={propertyForm.monthly_rent}
-                  onChange={(e) => setPropertyForm({ ...propertyForm, monthly_rent: parseFloat(e.target.value) })}
+                  onChange={(e) => setPropertyForm({ ...propertyForm, monthly_rent: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
@@ -549,7 +567,7 @@ const PropertiesNew = () => {
                   id="edit_monthly_rent"
                   type="number"
                   value={propertyForm.monthly_rent}
-                  onChange={(e) => setPropertyForm({ ...propertyForm, monthly_rent: parseFloat(e.target.value) })}
+                  onChange={(e) => setPropertyForm({ ...propertyForm, monthly_rent: e.target.value })}
                 />
               </div>
               <div className="space-y-2">

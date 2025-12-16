@@ -7,19 +7,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { mockApi } from '@/lib/mockApi';
+import { policyService, type DbPolicy } from '@/lib/supabaseApi';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 
-interface Policy {
-  id: string;
-  title: string;
-  content: string;
-  category: string;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
+type Policy = DbPolicy;
 
 const Policies = () => {
   const [policies, setPolicies] = useState<Policy[]>([]);
@@ -40,13 +32,14 @@ const Policies = () => {
   }, []);
 
   const fetchPolicies = async () => {
+    setLoading(true);
     try {
-      const data = await mockApi.getPolicies();
-      setPolicies(data || []);
-    } catch (error: any) {
+      const data = await policyService.list();
+      setPolicies(data);
+    } catch (error) {
       toast({
         title: 'Error',
-        description: error.message,
+        description: error instanceof Error ? error.message : 'Failed to load policies',
         variant: 'destructive',
       });
     } finally {
@@ -58,23 +51,21 @@ const Policies = () => {
     try {
       if (editingPolicy) {
         // Update existing policy
-        const { error } = await mockApi.updatePolicy(editingPolicy.id, { ...policyForm });
-        if (error) throw error;
+        await policyService.update(editingPolicy.id, { ...policyForm });
         toast({ title: 'Success', description: 'Policy updated successfully' });
       } else {
         // Create new policy
-        const { error } = await mockApi.addPolicy(policyForm as any);
-        if (error) throw error;
+        await policyService.create({ ...policyForm });
         toast({ title: 'Success', description: 'Policy created successfully' });
       }
 
       setDialogOpen(false);
       resetForm();
       fetchPolicies();
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'Error',
-        description: error.message,
+        description: error instanceof Error ? error.message : 'Failed to save policy',
         variant: 'destructive',
       });
     }
@@ -84,14 +75,13 @@ const Policies = () => {
     if (!confirm('Are you sure you want to delete this policy?')) return;
 
     try {
-      const { error } = await mockApi.deletePolicy(policyId);
-      if (error) throw error;
+      await policyService.remove(policyId);
       toast({ title: 'Success', description: 'Policy deleted successfully' });
       fetchPolicies();
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'Error',
-        description: error.message,
+        description: error instanceof Error ? error.message : 'Failed to delete policy',
         variant: 'destructive',
       });
     }
@@ -99,17 +89,16 @@ const Policies = () => {
 
   const handleToggleActive = async (policy: Policy) => {
     try {
-      const { error } = await mockApi.updatePolicy(policy.id, { is_active: !policy.is_active });
-      if (error) throw error;
+      await policyService.update(policy.id, { is_active: !policy.is_active });
       toast({ 
         title: 'Success', 
         description: `Policy ${!policy.is_active ? 'activated' : 'deactivated'}` 
       });
       fetchPolicies();
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'Error',
-        description: error.message,
+        description: error instanceof Error ? error.message : 'Failed to update policy',
         variant: 'destructive',
       });
     }

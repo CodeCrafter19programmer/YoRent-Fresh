@@ -1,6 +1,11 @@
-import { useEffect, useState } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
-import { mockApi } from '@/lib/mockApi';
+import { useEffect, useState, type FormEvent } from 'react';
+import {
+  paymentService,
+  tenantService,
+  notificationService,
+  type DbPayment,
+  type DbTenant,
+} from '@/lib/supabaseApi';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,38 +19,11 @@ import { CreditCard, Plus, Edit, DollarSign, Calendar, Users, AlertTriangle } fr
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
-interface Payment {
-  id: string;
-  tenant_id: string;
-  amount: number;
-  month: string;
-  due_date: string;
-  paid_date: string | null;
-  status: string;
-  payment_method: string | null;
-  notes: string | null;
-  tenant: {
-    full_name: string;
-    email: string;
-  };
-  property: {
-    name: string;
-  };
-}
+type Payment = DbPayment;
 
-interface Tenant {
-  id: string;
-  full_name: string;
-  email: string;
-  monthly_rent: number;
-  property: {
-    id: string;
-    name: string;
-  };
-}
+type Tenant = DbTenant;
 
 const AdminPayments = () => {
-  const { userRole } = useAuth();
   const [payments, setPayments] = useState<Payment[]>([]);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,19 +41,18 @@ const AdminPayments = () => {
   });
 
   useEffect(() => {
-    if (userRole === 'admin') {
-      fetchPayments();
-      fetchTenants();
-    }
-  }, [userRole]);
+    fetchPayments();
+    fetchTenants();
+  }, []);
 
   const fetchPayments = async () => {
+    setLoading(true);
     try {
-      const data = await mockApi.getPayments();
-      setPayments(data as any);
+      const data = await paymentService.list();
+      setPayments(data);
     } catch (error) {
       console.error('Error fetching payments:', error);
-      toast.error('Failed to fetch payments');
+      toast.error(error instanceof Error ? error.message : 'Failed to fetch payments');
     } finally {
       setLoading(false);
     }
@@ -83,46 +60,72 @@ const AdminPayments = () => {
 
   const fetchTenants = async () => {
     try {
-      const data = await mockApi.getActiveTenants();
-      setTenants(data as any);
+      const data = await tenantService.listActive();
+      setTenants(data);
     } catch (error) {
       console.error('Error fetching tenants:', error);
+      toast.error('Failed to fetch tenants');
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     
     try {
+      const parsedAmount = Number.parseFloat(formData.amount);
+      if (Number.isNaN(parsedAmount)) {
+        throw new Error('Please provide a valid payment amount.');
+      }
+
       const paymentData = {
         ...formData,
-        amount: parseFloat(formData.amount),
+        amount: parsedAmount,
         paid_date: formData.paid_date || null,
         payment_method: formData.payment_method || null,
-        notes: formData.notes || null
+        notes: formData.notes || null,
+      };
+
+      const tenant = tenants.find((t) => t.id === formData.tenant_id);
+      const paymentPayload = {
+        tenant_id: formData.tenant_id,
+        property_id: tenant?.property?.id ?? null,
+        amount: paymentData.amount,
+        month: paymentData.month,
+        due_date: paymentData.due_date,
+        paid_date: paymentData.paid_date,
+        status: paymentData.status,
+        payment_method: paymentData.payment_method,
+        notes: paymentData.notes,
       };
 
       if (editingPayment) {
-        const { error } = await mockApi.updatePayment(editingPayment.id, paymentData as any);
+        const updatedPayment = await paymentService.update(editingPayment.id, paymentPayload);
 
-        if (error) throw error;
-        
-        // Create notification for payment update
-        if (formData.status === 'paid' && editingPayment.status !== 'paid') {
-          const tenant = tenants.find(t => t.id === formData.tenant_id);
-          if (tenant) {
-            await createNotification(tenant.id, 'Payment Confirmed', `Your payment of $${formData.amount} for ${formData.month} has been confirmed.`, 'payment_success');
-          }
+        if (formData.status === 'paid' && editingPayment.status !== 'paid' && tenant?.user_id) {
+          await createNotification(
+            tenant.user_id,
+            'Payment Confirmed',
+            `Your payment of $${paymentData.amount.toFixed(2)} for ${paymentData.month} has been confirmed.`,
+            'payment_success'
+          );
         }
-        
-        toast.success('Payment updated successfully');
-      } else {
-        // Get property_id from tenant
-        const tenant = tenants.find(t => t.id === formData.tenant_id);
-        const { error } = await mockApi.createPayment({ ...(paymentData as any), property_id: tenant?.property?.id });
 
-        if (error) throw error;
+        toast.success('Payment updated successfully');
+        setEditingPayment(updatedPayment);
+      } else {
+        const createdPayment = await paymentService.create(paymentPayload);
+
+        if (paymentPayload.status === 'paid' && tenant?.user_id) {
+          await createNotification(
+            tenant.user_id,
+            'Payment Confirmed',
+            `Your payment of $${paymentData.amount.toFixed(2)} for ${paymentData.month} has been recorded.`,
+            'payment_success'
+          );
+        }
+
         toast.success('Payment created successfully');
+        setEditingPayment(createdPayment);
       }
 
       setIsDialogOpen(false);
@@ -130,15 +133,16 @@ const AdminPayments = () => {
       fetchPayments();
     } catch (error) {
       console.error('Error saving payment:', error);
-      toast.error('Failed to save payment');
+      toast.error(error instanceof Error ? error.message : 'Failed to save payment');
     }
   };
 
-  const createNotification = async (tenantId: string, title: string, message: string, type: string) => {
+  const createNotification = async (userId: string, title: string, message: string, type: string) => {
     try {
-      await mockApi.createNotification(tenantId, title, message, type);
+      await notificationService.create(userId, title, message, type);
     } catch (error) {
       console.error('Error creating notification:', error);
+      toast.error('Failed to send notification');
     }
   };
 
@@ -166,7 +170,7 @@ const AdminPayments = () => {
       paid_date: payment.paid_date || '',
       status: payment.status,
       payment_method: payment.payment_method || '',
-      notes: payment.notes || ''
+      notes: payment.notes || '',
     });
     setIsDialogOpen(true);
   };
@@ -186,23 +190,16 @@ const AdminPayments = () => {
   };
 
   const getOverviewStats = () => {
-    const totalRevenue = payments.filter(p => p.status === 'paid').reduce((sum, p) => sum + p.amount, 0);
-    const pendingAmount = payments.filter(p => p.status === 'unpaid').reduce((sum, p) => sum + p.amount, 0);
-    const overdueCount = payments.filter(p => p.status === 'unpaid' && new Date(p.due_date) < new Date()).length;
-    
+    const totalRevenue = payments
+      .filter((p) => p.status === 'paid')
+      .reduce((sum, p) => sum + (p.amount ?? 0), 0);
+    const pendingAmount = payments
+      .filter((p) => p.status === 'unpaid')
+      .reduce((sum, p) => sum + (p.amount ?? 0), 0);
+    const overdueCount = payments.filter((p) => p.status === 'unpaid' && new Date(p.due_date) < new Date()).length;
+
     return { totalRevenue, pendingAmount, overdueCount };
   };
-
-  if (userRole !== 'admin') {
-    return (
-      <Alert variant="destructive">
-        <AlertTriangle className="h-4 w-4" />
-        <AlertDescription>
-          Access denied. Admin privileges required.
-        </AlertDescription>
-      </Alert>
-    );
-  }
 
   if (loading) {
     return (
@@ -314,7 +311,8 @@ const AdminPayments = () => {
                       <SelectContent>
                         {tenants.map((tenant) => (
                           <SelectItem key={tenant.id} value={tenant.id}>
-                            {tenant.full_name} - {tenant.property.name}
+                            {tenant.full_name}
+                            {tenant.property?.name ? ` - ${tenant.property.name}` : ''}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -442,13 +440,13 @@ const AdminPayments = () => {
                 <TableRow key={payment.id}>
                   <TableCell>
                     <div>
-                      <p className="font-medium">{payment.tenant.full_name}</p>
-                      <p className="text-sm text-gray-600">{payment.tenant.email}</p>
+                      <p className="font-medium">{payment.tenant?.full_name ?? 'Unknown tenant'}</p>
+                      <p className="text-sm text-gray-600">{payment.tenant?.email ?? '—'}</p>
                     </div>
                   </TableCell>
-                  <TableCell>{payment.property.name}</TableCell>
+                  <TableCell>{payment.property?.name ?? 'N/A'}</TableCell>
                   <TableCell>{payment.month}</TableCell>
-                  <TableCell>${payment.amount.toFixed(2)}</TableCell>
+                  <TableCell>${(payment.amount ?? 0).toFixed(2)}</TableCell>
                   <TableCell>{format(new Date(payment.due_date), 'MMM dd, yyyy')}</TableCell>
                   <TableCell>
                     <Badge className={getPaymentStatusColor(payment.status)}>

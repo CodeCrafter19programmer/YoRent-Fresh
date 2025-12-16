@@ -1,7 +1,8 @@
 import { Home, Building2, Users, DollarSign, Receipt, Settings, CreditCard, Bell, Calculator, LogOut, Shield } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
-import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   Sidebar,
   SidebarContent,
@@ -15,7 +16,7 @@ import {
 } from "@/components/ui/sidebar";
 
 const adminMenuItems = [
-  { title: "Dashboard", url: "/", icon: Home },
+  { title: "Dashboard", url: "/admin/dashboard", icon: Home },
   { title: "Properties", url: "/properties", icon: Building2 },
   { title: "Tenants", url: "/tenants", icon: Users },
   { title: "Rent Management", url: "/rent", icon: DollarSign },
@@ -32,7 +33,17 @@ const adminPaymentItems = [
 
 export function AppSidebar() {
   const { open } = useSidebar();
-  const { userRole, signOut } = useAuth();
+  const navigate = useNavigate();
+  const { signOut } = useAuth();
+
+  const handleSignOut = async () => {
+    const { error } = await signOut();
+    if (error) {
+      console.error('Error signing out', error);
+      return;
+    }
+    navigate('/login');
+  };
 
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
@@ -45,64 +56,62 @@ export function AppSidebar() {
           )}
         </div>
 
-        {userRole === 'admin' && (
-          <>
-            <SidebarGroup>
-              <SidebarGroupLabel className="text-sidebar-foreground/70">
-                Main Menu
-              </SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {adminMenuItems.map((item) => (
-                    <SidebarMenuItem key={item.title}>
-                      <SidebarMenuButton asChild>
-                        <NavLink
-                          to={item.url}
-                          end
-                          className="flex items-center gap-3 rounded-lg px-3 py-2 text-sidebar-foreground transition-all hover:bg-sidebar-accent"
-                          activeClassName="bg-sidebar-accent font-medium"
-                        >
-                          <item.icon className="h-5 w-5" />
-                          <span>{item.title}</span>
-                        </NavLink>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
+        <>
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-sidebar-foreground/70">
+              Main Menu
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {adminMenuItems.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild>
+                      <NavLink
+                        to={item.url}
+                        end
+                        className="flex items-center gap-3 rounded-lg px-3 py-2 text-sidebar-foreground transition-all hover:bg-sidebar-accent"
+                        activeClassName="bg-sidebar-accent font-medium"
+                      >
+                        <item.icon className="h-5 w-5" />
+                        <span>{item.title}</span>
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
 
-            <SidebarGroup>
-              <SidebarGroupLabel className="text-sidebar-foreground/70">
-                Payment & Tax Management
-              </SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {adminPaymentItems.map((item) => (
-                    <SidebarMenuItem key={item.title}>
-                      <SidebarMenuButton asChild>
-                        <NavLink
-                          to={item.url}
-                          end
-                          className="flex items-center gap-3 rounded-lg px-3 py-2 text-sidebar-foreground transition-all hover:bg-sidebar-accent"
-                          activeClassName="bg-sidebar-accent font-medium"
-                        >
-                          <item.icon className="h-5 w-5" />
-                          <span>{item.title}</span>
-                        </NavLink>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          </>
-        )}
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-sidebar-foreground/70">
+              Payment & Tax Management
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {adminPaymentItems.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild>
+                      <NavLink
+                        to={item.url}
+                        end
+                        className="flex items-center gap-3 rounded-lg px-3 py-2 text-sidebar-foreground transition-all hover:bg-sidebar-accent"
+                        activeClassName="bg-sidebar-accent font-medium"
+                      >
+                        <item.icon className="h-5 w-5" />
+                        <span>{item.title}</span>
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </>
 
         <div className="mt-auto p-4">
           <Button
             variant="ghost"
-            onClick={signOut}
+            onClick={handleSignOut}
             className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent"
           >
             <LogOut className="h-5 w-5 mr-3" />
