@@ -3,7 +3,7 @@
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/CodeCrafter19programmer/YoRent-Fresh)
 
-**Live Demo:** [https://yorent.netlify.app](https://yorent.netlify.app)
+**Live Demo:** [https://<your-vercel-project>.vercel.app](https://<your-vercel-project>.vercel.app)
 
 A comprehensive tenant management system with authentication, payment tracking, notifications, and tax accountability features. 🏠
 

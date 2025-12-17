@@ -20,13 +20,13 @@
 - Ensured loading state is always set to `false` after authentication operations complete
 
 ### 3. 🔗 Deployment Platform & URL Update
-**Problem:** README.md showed Vercel deployment instead of Netlify, and GitHub repository page showed wrong URL (`yo-rent-fresh.vercel.app` instead of `yorent.netlify.app`)
+**Problem:** Deployment documentation and repository metadata needed to be aligned to the intended production platform and URL.
 **Solution:**
-- Updated README.md to use Netlify deployment instead of Vercel
-- Changed deploy button from Vercel to Netlify
-- Added prominent live demo URL: `https://yorent.netlify.app`
+- Updated README.md to use Vercel deployment
+- Ensured deploy button points to Vercel
+- Added prominent live demo URL: `https://<your-vercel-project>.vercel.app`
 - Updated repository reference to use `YoRent-Fresh` for deployment
-- Changed tech stack to reflect Netlify as deployment platform
+- Changed tech stack to reflect Vercel as deployment platform
 - Added note in README about updating GitHub repository settings
 - Created `DEPLOYMENT_INSTRUCTIONS.md` with step-by-step guide to update the GitHub repo URL
 
@@ -47,14 +47,14 @@
    - Removed debug console.log statements
 
 2. **README.md**
-   - Changed deployment platform from Vercel to Netlify
+   - Confirmed deployment platform is Vercel
    - Updated repository URL to YoRent-Fresh
-   - Added live demo link: https://yorent.netlify.app
+   - Added live demo link: https://<your-vercel-project>.vercel.app
    - Added note about updating GitHub repository settings
 
 3. **DEPLOYMENT_INSTRUCTIONS.md** (NEW FILE)
    - Step-by-step guide for updating GitHub repository URL
-   - Netlify deployment configuration details
+   - Vercel deployment configuration details
    - Environment variables documentation
 
 ## Expected Improvements

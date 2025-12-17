@@ -25,10 +25,7 @@ if (requireLoginAlways) {
 }
 ```
 
-**To Enable:** Set environment variable in Netlify:
-```
-VITE_REQUIRE_LOGIN_ALWAYS=true
-```
+**Note:** This behavior requires code support. The current codebase does not reference `VITE_REQUIRE_LOGIN_ALWAYS`.
 
 ---
 
@@ -115,14 +112,15 @@ if (import.meta.env.DEV) {
 
 ## 🚀 Deployment Instructions
 
-### For Netlify
+### For Vercel
 
-1. Go to https://app.netlify.com/sites/yorent/settings/deploys#environment
-2. Add environment variable:
+1. Go to your Vercel project dashboard
+2. Open Settings → Environment Variables
+3. Add environment variable:
    ```
    VITE_REQUIRE_LOGIN_ALWAYS=true
    ```
-3. Trigger a new deployment
+4. Trigger a new deployment
 4. Test: Open site in incognito - should always show login page
 
 ### Testing Checklist
@@ -168,7 +166,7 @@ If you want to keep sessions persistent during development (convenience):
 
 ### Rollback Instructions
 If you need to revert to session persistence:
-1. Remove or set `VITE_REQUIRE_LOGIN_ALWAYS="false"` in Netlify
+1. Remove or set `VITE_REQUIRE_LOGIN_ALWAYS="false"` in Vercel
 2. Redeploy
 3. Sessions will persist across page loads
 

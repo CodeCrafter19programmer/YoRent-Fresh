@@ -71,12 +71,12 @@ Your local repository is already initialized and committed with all the YoRent f
 
 ## After Pushing to GitHub
 
-### Deploy to Vercel/Netlify (Optional)
-1. Connect your GitHub repository to Vercel or Netlify
+### Deploy to Vercel (Optional)
+1. Connect your GitHub repository to Vercel
 2. Set environment variables:
    - `VITE_SUPABASE_PROJECT_ID`
-   - `VITE_SUPABASE_PUBLISHABLE_KEY`
    - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_ANON_KEY`
 3. Deploy automatically
 
 ### Collaborate with Team

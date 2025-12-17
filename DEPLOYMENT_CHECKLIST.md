@@ -4,48 +4,48 @@
 
 **Repositories Updated:**
 - ✅ YoRent-TenantManagement (origin)
-- ✅ YoRent-Fresh (fresh) - **This triggers Netlify deploy**
+- ✅ YoRent-Fresh (fresh) - **This triggers Vercel deploy**
 
 **Commit:** `89cce10` - Security & Performance: Force login, fix spinners, code quality scan
 
 ---
 
-## 🚀 CRITICAL: Netlify Environment Variable Required
+## 🚀 CRITICAL: Vercel Environment Variables
 
-### **YOU MUST DO THIS BEFORE TESTING:**
+### **DO THIS BEFORE TESTING:**
 
-1. Go to: https://app.netlify.com/sites/yorent/settings/deploys#environment
-2. Click "Add a variable" or edit existing variables
-3. Add this EXACT variable:
+1. Go to your Vercel project dashboard
+2. Open Settings → Environment Variables
+3. Add the required Supabase variables:
    ```
-   Key:   VITE_REQUIRE_LOGIN_ALWAYS
-   Value: true
+   VITE_SUPABASE_URL=https://xjnvnbbijcbrqgbyxkij.supabase.co
+   VITE_SUPABASE_ANON_KEY=<your_anon_key>
+   VITE_SUPABASE_PROJECT_ID=xjnvnbbijcbrqgbyxkij
    ```
-4. Click "Save"
-5. Go to "Deploys" tab
-6. Wait for the auto-deploy to finish (triggered by your git push)
-7. **OR** Click "Trigger deploy" → "Clear cache and deploy site"
+4. Save
+5. Wait for the auto-deploy to finish (triggered by your git push)
+6. Or redeploy from the Deployments tab
 
 ### Why This Is Critical:
-Without this environment variable, the security fix won't work and users will still auto-login from cached sessions.
+Without these environment variables, the frontend cannot connect to Supabase in production.
 
 ---
 
 ## 🧪 Testing Instructions
 
-### After Netlify Deploy Completes:
+### After Vercel Deploy Completes:
 
 1. **Clear Browser Cache & Cookies**
    - Chrome/Edge: Settings → Privacy → Clear browsing data
    - Or use Incognito/Private window
 
-2. **Visit:** https://yorent.netlify.app
+2. **Visit:** https://<your-vercel-project>.vercel.app
 
 3. **Expected Behavior:**
-   - ✅ Should show LOGIN PAGE (not dashboard)
+   - ✅ Should load the app successfully
    - ✅ Enter credentials and login
    - ✅ Close tab/browser
-   - ✅ Re-open site → Should show LOGIN PAGE again
+   - ✅ Re-open site → Session may still be active depending on browser storage
    - ✅ No spinner stuck on any page
    - ✅ Console should be clean (no Supabase config logs)
 
@@ -86,7 +86,7 @@ Without this environment variable, the security fix won't work and users will st
    - Future security recommendations
 
 3. **`.env.production`** - Production environment template
-   - Use this as reference for Netlify variables
+   - Not used (Vercel environment variables are configured in the Vercel dashboard)
 
 4. **`DEPLOYMENT_CHECKLIST.md`** - This file!
 
@@ -94,8 +94,8 @@ Without this environment variable, the security fix won't work and users will st
 
 ## 🔍 Monitor the Deployment
 
-### Check Netlify Deploy Status:
-https://app.netlify.com/sites/yorent/deploys
+### Check Vercel Deploy Status:
+Open your Vercel project → Deployments
 
 **Wait for:**
 - 🟡 Building... → 🟢 Published
@@ -108,9 +108,9 @@ https://app.netlify.com/sites/yorent/deploys
 
 ### If Login Page Doesn't Appear:
 
-1. **Check Netlify Environment Variable**
-   - Make sure `VITE_REQUIRE_LOGIN_ALWAYS=true` is set
-   - Redeploy after adding it
+1. **Check Vercel Environment Variables**
+   - Make sure `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and `VITE_SUPABASE_PROJECT_ID` are set
+   - Redeploy after adding/updating them
 
 2. **Hard Refresh Browser**
    - Mac: `Cmd + Shift + R`
@@ -123,7 +123,7 @@ https://app.netlify.com/sites/yorent/deploys
 ### If Spinner Still Appears:
 
 1. Check browser console for errors
-2. Verify deploy completed successfully on Netlify
+2. Verify deploy completed successfully on Vercel
 3. Make sure you're testing the live site (not localhost)
 
 ---
@@ -150,11 +150,10 @@ See `CODE_QUALITY_REPORT.md` for details:
 
 After deployment completes:
 
-- [ ] Netlify shows "Published" status
-- [ ] Environment variable `VITE_REQUIRE_LOGIN_ALWAYS=true` is set
-- [ ] Opening https://yorent.netlify.app shows LOGIN page
+- [ ] Vercel deployment succeeded
+- [ ] Supabase environment variables are set in Vercel
+- [ ] Opening https://<your-vercel-project>.vercel.app loads the app
 - [ ] After login, can access dashboard
-- [ ] After closing browser and reopening, shows LOGIN page again
 - [ ] No spinner gets stuck on any page
 - [ ] Sign out redirects immediately to login
 - [ ] Console is clean (no Supabase config logs)
@@ -174,7 +173,7 @@ After deployment completes:
 ## 🆘 Need Help?
 
 If you encounter issues:
-1. Check Netlify build logs
+1. Check Vercel build logs
 2. Check browser console for errors
 3. Verify environment variables are set correctly
 4. Test in incognito mode first

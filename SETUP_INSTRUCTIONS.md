@@ -6,18 +6,17 @@ Since we need to apply the database migrations to your Supabase project, please 
 
 ### Option A: Using Supabase Dashboard (Recommended)
 
-1. **Go to your Supabase Dashboard**: https://supabase.com/dashboard/project/qfocwomylkbuiccipfgs
+1. **Go to your Supabase Dashboard**: https://supabase.com/dashboard/project/xjnvnbbijcbrqgbyxkij
 2. **Navigate to SQL Editor**
-3. **Apply the first migration** by copying and pasting the content from:
-   `supabase/migrations/20251108181052_3c8f55be-5a91-4ebe-b685-0b39ea8f1ba5.sql`
-4. **Apply the second migration** by copying and pasting the content from:
-   `supabase/migrations/20251108220000_add_tax_records.sql`
+3. Copy and paste the content from:
+   `supabase/schema.sql`
+4. Execute the SQL
 
 ### Option B: Using Supabase CLI (If you have project access)
 
 ```bash
 # Link to your project (you'll need to provide your database password)
-supabase link --project-ref qfocwomylkbuiccipfgs
+supabase link --project-ref xjnvnbbijcbrqgbyxkij
 
 # Push migrations
 supabase db push
@@ -28,9 +27,9 @@ supabase db push
 Make sure your `.env` file has the correct Supabase credentials:
 
 ```env
-VITE_SUPABASE_PROJECT_ID=qfocwomylkbuiccipfgs
-VITE_SUPABASE_PUBLISHABLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFmb2N3b215bGtidWljY2lwZmdzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI2MjExODgsImV4cCI6MjA3ODE5NzE4OH0.aK4DdcdTbE95Bs_Ke6KXOsn8rRpgdnCgqH2JHKP3UAk
-VITE_SUPABASE_URL=https://qfocwomylkbuiccipfgs.supabase.co
+VITE_SUPABASE_PROJECT_ID=xjnvnbbijcbrqgbyxkij
+VITE_SUPABASE_URL=https://xjnvnbbijcbrqgbyxkij.supabase.co
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
 ## Step 3: Install Dependencies and Run the Application
@@ -53,8 +52,7 @@ After the application is running:
 
 ```sql
 -- Replace 'USER_ID_HERE' with the actual user ID from the auth.users table
-INSERT INTO public.user_roles (user_id, role) 
-VALUES ('USER_ID_HERE', 'admin');
+update public.profiles set role = 'admin' where id = 'USER_ID_HERE';
 ```
 
 ## Step 5: Test the System

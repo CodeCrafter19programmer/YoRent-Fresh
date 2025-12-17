@@ -28,14 +28,13 @@
 ## 🚀 Next Steps (Manual Actions Required)
 
 ### Step 1: Apply Database Migrations
-**You need to manually apply the database migrations to your Supabase project:**
+**You need to apply the database schema to your Supabase project:**
 
-1. Go to your Supabase Dashboard: https://supabase.com/dashboard/project/qfocwomylkbuiccipfgs
+1. Go to your Supabase Dashboard: https://supabase.com/dashboard/project/xjnvnbbijcbrqgbyxkij
 2. Navigate to SQL Editor
-3. Copy and paste the content from these files:
-   - `supabase/migrations/20251108181052_3c8f55be-5a91-4ebe-b685-0b39ea8f1ba5.sql`
-   - `supabase/migrations/20251108220000_add_tax_records.sql`
-4. Execute each migration
+3. Copy and paste the content from this file:
+   - `supabase/schema.sql`
+4. Execute the SQL
 
 ### Step 2: Push to GitHub
 **Follow the instructions in `GITHUB_SETUP.md`:**
@@ -117,9 +116,9 @@ YoRent/
 
 Your `.env` file is already configured with:
 ```env
-VITE_SUPABASE_PROJECT_ID=qfocwomylkbuiccipfgs
-VITE_SUPABASE_PUBLISHABLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-VITE_SUPABASE_URL=https://qfocwomylkbuiccipfgs.supabase.co
+VITE_SUPABASE_PROJECT_ID=xjnvnbbijcbrqgbyxkij
+VITE_SUPABASE_URL=https://xjnvnbbijcbrqgbyxkij.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
 ## 🚨 Important Notes
