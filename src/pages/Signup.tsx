@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, Home } from 'lucide-react';
+ import { useAuth } from '@/contexts/AuthContext';
 
 const Signup = () => {
   const [email, setEmail] = useState('');
@@ -15,6 +16,7 @@ const Signup = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const navigate = useNavigate();
+  const { signUp } = useAuth();
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -27,12 +29,23 @@ const Signup = () => {
       return;
     }
 
-    setSuccess(true);
-    setTimeout(() => {
-      navigate('/login');
-    }, 3000); // Give more time to read the success message
+    try {
+      const { error } = await signUp({ email, password, fullName });
+      if (error) {
+        setError(error.message);
+        return;
+      }
 
-    setLoading(false);
+      setSuccess(true);
+      setTimeout(() => {
+        navigate('/login');
+      }, 3000);
+    } catch (err) {
+      console.error('Signup submit exception:', err);
+      setError('Unexpected error during sign up');
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (success) {
