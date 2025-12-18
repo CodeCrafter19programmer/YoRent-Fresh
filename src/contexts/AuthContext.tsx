@@ -44,65 +44,70 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   });
 
   const fetchProfile = useCallback(async (userId: string): Promise<Profile | null> => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id, email, full_name, role, phone')
-      .eq('id', userId)
-      .maybeSingle();
-
-    if (error) {
-      console.error('Error fetching profile', error);
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, email, full_name, role, phone')
+        .eq('id', userId)
+        .maybeSingle();
+      if (error) {
+        console.error('Error fetching profile', error);
+        setProfile(null);
+        return null;
+      }
+      if (data) {
+        const mapped = mapProfile(data);
+        setProfile(mapped);
+        return mapped;
+      }
+      setProfile(null);
+      return null;
+    } catch (err) {
+      console.error('Network or unexpected error fetching profile', err);
       setProfile(null);
       return null;
     }
-
-    if (data) {
-      const mapped = mapProfile(data);
-      setProfile(mapped);
-      return mapped;
-    }
-
-    setProfile(null);
-    return null;
   }, []);
 
   const loadSession = useCallback(async () => {
     setLoading(true);
-
-    if (requireLoginAlways) {
-      // Clear any existing local session for maximum security
-      await supabase.auth.signOut({ scope: 'local' });
+    try {
+      if (requireLoginAlways) {
+        // Clear any existing local session for maximum security
+        await supabase.auth.signOut({ scope: 'local' });
+        setSession(null);
+        setUser(null);
+        setProfile(null);
+        setLoading(false);
+        return;
+      }
+      const {
+        data: { session: activeSession },
+        error,
+      } = await supabase.auth.getSession();
+      if (error) {
+        console.error('Error loading session', error);
+        setSession(null);
+        setUser(null);
+        setProfile(null);
+        setLoading(false);
+        return;
+      }
+      setSession(activeSession);
+      setUser(activeSession?.user ?? null);
+      if (activeSession?.user) {
+        await fetchProfile(activeSession.user.id);
+      } else {
+        setProfile(null);
+      }
+      setLoading(false);
+    } catch (err) {
+      console.error('Unexpected error during loadSession', err);
       setSession(null);
       setUser(null);
       setProfile(null);
       setLoading(false);
-      return;
     }
-
-    const {
-      data: { session: activeSession },
-      error,
-    } = await supabase.auth.getSession();
-
-    if (error) {
-      console.error('Error loading session', error);
-      setSession(null);
-      setUser(null);
-      setProfile(null);
-      setLoading(false);
-      return;
-    }
-
-    setSession(activeSession);
-    setUser(activeSession?.user ?? null);
-
-    if (activeSession?.user) {
-      await fetchProfile(activeSession.user.id);
-    } else {
-      setProfile(null);
-    }
-
-    setLoading(false);
   }, [fetchProfile]);
 
   const refreshProfile = useCallback(async () => {
@@ -113,22 +118,42 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     loadSession();
 
-    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, currentSession) => {
-      setSession(currentSession);
-      setUser(currentSession?.user ?? null);
-
-      if (currentSession?.user) {
-        await fetchProfile(currentSession.user.id);
-      } else {
-        setProfile(null);
-      }
-
+    // Failsafe: If loading stays true for over 15s (network/offline/etc), force sign-out and show message.
+    let timeout = setTimeout(() => {
       setLoading(false);
+      setSession(null);
+      setUser(null);
+      setProfile(null);
+      if (typeof window !== 'undefined') {
+        window.alert('Authentication check timed out. Please sign in again.');
+        window.location.assign('/login');
+      }
+    }, 15000);
+
+    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, currentSession) => {
+      try {
+        setSession(currentSession);
+        setUser(currentSession?.user ?? null);
+        if (currentSession?.user) {
+          await fetchProfile(currentSession.user.id);
+        } else {
+          setProfile(null);
+        }
+        setLoading(false);
+      } catch (err) {
+        console.error('Unexpected error in onAuthStateChange', err);
+        setSession(null);
+        setUser(null);
+        setProfile(null);
+        setLoading(false);
+      }
     });
 
     return () => {
       listener.subscription.unsubscribe();
+      clearTimeout(timeout);
     };
+
   }, [fetchProfile, loadSession]);
 
   const signIn = useCallback(
