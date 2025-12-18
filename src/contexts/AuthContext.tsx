@@ -44,6 +44,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   });
 
   const fetchProfile = useCallback(async (userId: string): Promise<Profile | null> => {
+    if (typeof window !== 'undefined') {
+      console.info('[Auth DEBUG] Fetching profile for:', userId);
+    }
+
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -51,7 +55,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         .eq('id', userId)
         .maybeSingle();
       if (error) {
-        console.error('Error fetching profile', error);
+        if (typeof window !== 'undefined') {
+          console.error('[Auth DEBUG] Error fetching profile', error);
+        } else {
+          console.error('Error fetching profile', error);
+        }
         setProfile(null);
         return null;
       }
@@ -63,13 +71,21 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setProfile(null);
       return null;
     } catch (err) {
-      console.error('Network or unexpected error fetching profile', err);
+      if (typeof window !== 'undefined') {
+        console.error('[Auth DEBUG] Network or unexpected error fetching profile', err);
+      } else {
+        console.error('Network or unexpected error fetching profile', err);
+      }
       setProfile(null);
       return null;
     }
   }, []);
 
   const loadSession = useCallback(async () => {
+    if (typeof window !== 'undefined') {
+      console.info('[Auth DEBUG] Starting loadSession...');
+    }
+
     setLoading(true);
     try {
       if (requireLoginAlways) {
@@ -85,6 +101,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         data: { session: activeSession },
         error,
       } = await supabase.auth.getSession();
+      if (typeof window !== 'undefined') {
+        console.info('[Auth DEBUG] supabase.auth.getSession() result:', { activeSession, error });
+      }
+
       if (error) {
         console.error('Error loading session', error);
         setSession(null);
@@ -96,8 +116,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setSession(activeSession);
       setUser(activeSession?.user ?? null);
       if (activeSession?.user) {
+        if (typeof window !== 'undefined') {
+          console.info('[Auth DEBUG] Found activeSession.user:', activeSession.user);
+        }
         await fetchProfile(activeSession.user.id);
       } else {
+        if (typeof window !== 'undefined') {
+          console.info('[Auth DEBUG] No active user in session.');
+        }
         setProfile(null);
       }
       setLoading(false);
@@ -131,6 +157,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }, 15000);
 
     const { data: listener } = supabase.auth.onAuthStateChange(async (_event, currentSession) => {
+      if (typeof window !== 'undefined') {
+        console.info('[Auth DEBUG] onAuthStateChange triggered', { _event, currentSession });
+      }
+
       try {
         setSession(currentSession);
         setUser(currentSession?.user ?? null);
