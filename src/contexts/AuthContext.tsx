@@ -31,6 +31,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const requireLoginAlways =
+    typeof import.meta !== 'undefined' &&
+    import.meta.env.VITE_REQUIRE_LOGIN_ALWAYS === 'true';
+
   const mapProfile = (data: any): Profile => ({
     id: data.id,
     email: data.email,
@@ -64,6 +68,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const loadSession = useCallback(async () => {
     setLoading(true);
+
+    if (requireLoginAlways) {
+      // Clear any existing local session for maximum security
+      await supabase.auth.signOut({ scope: 'local' });
+      setSession(null);
+      setUser(null);
+      setProfile(null);
+      setLoading(false);
+      return;
+    }
+
     const {
       data: { session: activeSession },
       error,
@@ -116,19 +131,25 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
   }, [fetchProfile, loadSession]);
 
-  const signIn = useCallback(async ({ email, password }: { email: string; password: string }) => {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  const signIn = useCallback(
+    async ({ email, password }: { email: string; password: string }) => {
+      setLoading(true);
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
-    if (error) {
-      return { error: new Error(error.message), profile: null };
-    }
+      if (error) {
+        setLoading(false);
+        return { error: new Error(error.message), profile: null };
+      }
 
-    setUser(data.user ?? null);
-    setSession(data.session ?? null);
+      setUser(data.user ?? null);
+      setSession(data.session ?? null);
 
-    const nextProfile = data.user ? await fetchProfile(data.user.id) : null;
-    return { error: null, profile: nextProfile };
-  }, [fetchProfile]);
+      const nextProfile = data.user ? await fetchProfile(data.user.id) : null;
+      setLoading(false);
+      return { error: null, profile: nextProfile };
+    },
+    [fetchProfile]
+  );
 
   const signUp = useCallback(
     async ({ email, password, fullName }: { email: string; password: string; fullName?: string }) => {
@@ -161,14 +182,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   );
 
   const signOut = useCallback(async () => {
+    setLoading(true);
     const { error } = await supabase.auth.signOut();
     if (error) {
+      setLoading(false);
       return { error: new Error(error.message) };
     }
 
     setSession(null);
     setUser(null);
     setProfile(null);
+    setLoading(false);
     return { error: null };
   }, []);
 
