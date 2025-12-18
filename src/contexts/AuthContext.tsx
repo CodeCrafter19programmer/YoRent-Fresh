@@ -144,18 +144,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     loadSession();
 
-    // Failsafe: If loading stays true for over 15s (network/offline/etc), force sign-out and show message.
-    let timeout = setTimeout(() => {
-      setLoading(false);
-      setSession(null);
-      setUser(null);
-      setProfile(null);
-      if (typeof window !== 'undefined') {
-        window.alert('Authentication check timed out. Please sign in again.');
-        window.location.assign('/login');
-      }
-    }, 15000);
-
     const { data: listener } = supabase.auth.onAuthStateChange(async (_event, currentSession) => {
       if (typeof window !== 'undefined') {
         console.info('[Auth DEBUG] onAuthStateChange triggered', { _event, currentSession });
@@ -181,9 +169,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     return () => {
       listener.subscription.unsubscribe();
-      clearTimeout(timeout);
     };
-
   }, [fetchProfile, loadSession]);
 
   const signIn = useCallback(
